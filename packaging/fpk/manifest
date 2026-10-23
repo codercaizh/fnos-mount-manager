@@ -1,0 +1,14 @@
+appname="fnos-mount-manager"
+version="1.1.2"
+display_name="挂载管家"
+desc="将已挂载的 SMB/CIFS 目录映射到飞牛共享目录，支持断线恢复、只读与读写。"
+maintainer="Community"
+source="thirdparty"
+platform="arm"
+os_min_version="1.2.0604"
+ctl_stop=true
+checkport=false
+micro_app=true
+disable_authorization_path=false
+desktop_uidir="ui"
+desktop_applaunchname="fnos-mount-manager.main"

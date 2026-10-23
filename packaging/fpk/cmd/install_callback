@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "挂载管家安装成功。请从飞牛桌面打开应用，以管理员身份操作。"

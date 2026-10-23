@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$(id -u)" -eq 0 ]] || { echo "本应用需要 root 权限以执行 Linux bind mount" >&2;exit 1; }
+mkdir -p "${TRIM_PKGVAR:?}/private"
+chmod 700 "$TRIM_PKGVAR/private"

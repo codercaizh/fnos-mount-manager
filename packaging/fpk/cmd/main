@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+APPDEST="${TRIM_APPDEST:?missing TRIM_APPDEST}"
+PKGVAR="${TRIM_PKGVAR:?missing TRIM_PKGVAR}"
+BIN="$(readlink -f "$APPDEST/server/mountmgr")"
+PIDFILE="$PKGVAR/service.pid"
+SOCKET="$APPDEST/app.sock"
+STATE="$PKGVAR/private/mounts.json"
+running() {
+  [[ -f "$PIDFILE" ]] || return 1
+  local pid cmd
+  pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  cmd="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  [[ "$cmd" == "$BIN" ]]
+}
+case "${1:-}" in
+ start)
+  [[ "$(id -u)" -eq 0 ]] || { echo '挂载管家需要 root/CAP_SYS_ADMIN 权限' >&2; exit 1; }
+  mkdir -p "$PKGVAR/private"
+  chmod 700 "$PKGVAR/private"
+  if running; then echo "挂载管家已运行";exit 0;fi
+  rm -f "$PIDFILE" "$SOCKET"
+  "$BIN" --socket "$SOCKET" --state "$STATE" >> "$PKGVAR/service.log" 2>&1 &
+  echo "$!" > "$PIDFILE"
+  chmod 600 "$PIDFILE" "$PKGVAR/service.log"
+  for i in $(seq 1 50);do
+    if running && [[ -S "$SOCKET" ]];then echo "挂载管家已启动";exit 0;fi
+    sleep 0.2
+  done
+  echo "服务启动失败，日志: $PKGVAR/service.log" >&2
+  exit 1
+  ;;
+ stop)
+  if running;then
+    pid="$(cat "$PIDFILE")"
+    kill -TERM "$pid"
+    for i in $(seq 1 40);do
+      [[ ! -e "/proc/$pid/exe" ]] && break
+      sleep 0.2
+    done
+    if running;then echo "停止失败，PID=$pid" >&2;exit 1;fi
+  fi
+  rm -f "$PIDFILE" "$SOCKET"
+  ;;
+ status)
+  if running && [[ -S "$SOCKET" ]];then echo "挂载管家运行中";exit 0;fi
+  echo "挂载管家未运行";exit 1
+  ;;
+ *) echo "Usage: $0 start|stop|status" >&2;exit 2;;
+esac

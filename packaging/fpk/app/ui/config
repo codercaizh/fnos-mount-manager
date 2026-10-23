@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "fnos-mount-manager.main": {
+      "title": "挂载管家",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/fnos-mount-manager",
+      "gatewaySocket": "app.sock",
+      "url": "/app/fnos-mount-manager/",
+      "allUsers": false
+    }
+  }
+}

@@ -1,0 +1,104 @@
+# 挂载管家 · fnOS Mount Manager
+
+[English](README_EN.md) · [测试文档](docs/TESTING.md) · [安全说明](docs/SECURITY.md) · [下载 Releases](https://github.com/codercaizh/fnos-mount-manager/releases)
+
+一个面向 **飞牛 fnOS 的轻量目录映射管理器**。利用 Linux bind mount 将系统已连接的 SMB/CIFS 远程目录映射到本地共享目录，帮助原版「备份」应用访问远程 NAS 数据，**无需修改系统程序**。
+
+![移动端界面预览](docs/screenshot-mobile.png)
+
+> **v1.1.2** · ARM64 / x86_64 · fnOS ≥ 1.2.0604 · MIT（自有代码） · 安装需 root/CAP_SYS_ADMIN 特权。请先在测试目录验证兼容性。
+
+## 使用场景与原理
+
+原版飞牛备份选择器有时不能直接选择远程挂载目录。例如：
+
+| 设置 | 路径示例 |
+|---|---|
+| fnOS 已经连接的远程 SMB 源 | `/vol02/1000-0-<mount-id>/Photos` |
+| 本地共享父目录 | `/vol1/1000/share` |
+| 映射名称 | `爸爸相册` |
+| 最终本地别名路径 | `/vol1/1000/share/爸爸相册` |
+
+这个别名是**同一批远程数据的另一个访问入口**，不是复制、同步，也不负责重新拨号连接 SMB。
+
+## 功能
+
+- **原生目录选择器**：使用 fnOS `@trimjs/web-app` 官方 SDK，来源可选择远程挂载，目标只允许本地共享目录。
+- **两种访问模式**：只读用于备份来源，读写用于需要回写远程 NAS 的恢复流程。
+- **自动维护**：启动时及每 60 秒检测 bind mount；来源恢复上线后自动尝试重挂。
+- **多条映射**：新建、重命名、启用、停用、状态检查、删除，保留持久化配置。
+- **数据保护**：拒绝非空目标、符号链接、系统目录、交叉嵌套路径及覆盖其他程序的挂载；正常卸载不会删除源数据。
+- **资源占用轻量**：Go 单二进制，独立 fnOS FPK，无额外数据库、容器或公网服务端口。
+
+## 安装和操作
+
+1. 从 [Releases](https://github.com/codercaizh/fnos-mount-manager/releases) 下载 **arm64** 或 **x86_64** 对应的 FPK。
+2. fnOS「应用中心 → 手动安装」，选择对应 FPK 并启动「挂载管家」。
+3. 提前在 fnOS 系统**远程挂载**中连接好目标 SMB/CIFS 共享。
+4. 选择来源目录（例如 `/vol02/1000-0-xxx/Photos`）及本地父目录（例如 `/vol1/1000/share`）。
+5. 输入映射名称，设置 **只读 / 读写**，点击「创建映射」。
+6. 状态应为「已挂载」，在原版备份应用「我的文件」下选择新的本地目录。
+
+**只读与读写：** 只读 remount 仅作用于新的绑定别名，不会改变原始 CIFS 挂载的全局权限。选择读写也不能越过 SMB 服务器端的访问控制和 fnOS ACL。
+
+**管理操作：** 停用会卸载别名，启用会恢复巡检；删除只移除映射记录和本应用创建的空目录，不递归删除源文件。重命名、停用、删除前应停止正在使用该路径的备份或还原任务，避免 EBUSY（设备忙）。
+
+## 限制与安全
+
+- 本应用**不会建立或重连 CIFS 网络会话**。SMB 断开时由 fnOS 远程挂载功能负责恢复；重连后应用巡检才重新建立本地路径别名。
+- 只检查 Linux `/proc/self/mountinfo`，不持续探测 SMB 服务器在线情况。因此网络已断开但内核还保留挂载项时，状态可能暂时滞后。
+- 不支持对来源内部的独立子挂载执行递归绑定（non-recursive bind）。
+- 目录范围明确限定：远程来源 `/vol02/<mount-id>/...`，本地目标 `/volN/<数字用户ID>/<共享目录>/...`，禁止操作任意系统目录。
+- 特权申请使用 fnOS FPK 的 `run-as=root`；如果 fnOS 拒绝第三方特权应用，请遵守系统限制。
+- 已通过自动化后端、接口、浏览器和打包校验；**不能据此宣称所有 fnOS 固件上的真机安装、写入权限和开机重挂测试均已通过**。详见 [测试文档](docs/TESTING.md)。
+
+## 从源码构建
+
+需要 Go 1.22+、Node.js 22+、npm、Linux x86_64（作为编译主机）及官方 `fnpack 1.2.3`。构建同时生成两种架构的 FPK：
+
+```bash
+git clone https://github.com/codercaizh/fnos-mount-manager.git
+cd fnos-mount-manager
+
+npm ci --ignore-scripts
+npm run prepare:sdk
+go test ./...
+go test -race ./...
+go vet ./...
+npm run test:syntax
+
+# 浏览器 UI 冒烟测试
+npx playwright install chromium
+npm run test:ui
+
+# 官方 fnpack 下载并校验
+mkdir -p dist
+curl -fsSL https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 -o dist/fnpack-linux-amd64
+echo '54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93  dist/fnpack-linux-amd64' | sha256sum -c -
+chmod +x dist/fnpack-linux-amd64
+
+bash scripts/build.sh
+```
+
+输出：`dist/fnos-mount-manager-1.1.2-arm64.fpk`、`dist/fnos-mount-manager-1.1.2-x86_64.fpk` 及对应 SHA-256。两个 FPK 的 manifest 平台分别是 `arm` 与 `x86`，包含不同的 Linux ELF 可执行文件。
+
+## 源码目录
+
+```text
+cmd/mountmgr/main.go            HTTP API / 守护 / bind mount
+cmd/mountmgr/*_test.go          Go 单元测试和系统调用模拟
+cmd/mountmgr/web/               白底 Web 页面与 fnOS 原生选择器
+packaging/fpk/                  fnOS manifest、权限、脚本及图标
+scripts/build.sh                双架构交叉编译与官方 fnpack
+scripts/prepare-sdk.cjs         固定 SDK 版本并复制至嵌入资源
+scripts/ui-smoke.cjs            Playwright 测试页面和选择器回调
+scripts/icon.svg                应用图标源文件
+.github/workflows/ci.yml        自动测试、构建与发布
+docs/                           测试、安全、第三方依赖说明
+```
+
+应用配置：`TRIM_PKGVAR/private/mounts.json`（0600 权限，原子写入）。应用日志：`TRIM_PKGVAR/service.log`。管理页面由 fnOS 网关访问 Unix socket `TRIM_APPDEST/app.sock`，不监听外部 TCP 管理端口。
+
+## 许可与声明
+
+仓库自有代码采用 [MIT](LICENSE)。fnOS、`@trimjs/web-app` 和 `fnpack` 为各自权利人的项目；SDK 通过锁定 npm 依赖重建，不将第三方压缩代码冒称自有源码，具体见 [第三方说明](docs/THIRD_PARTY.md)。本项目并非飞牛官方应用。欢迎提交附带 fnOS 版本、CPU 架构及脱敏日志的 Issue。

@@ -1,0 +1,16 @@
+dist/
+*.fpk
+packaging/fpk/app/server/
+*.sha256
+cmd/mountmgr/web/fnos-sdk.js
+node_modules/
+.tooling/
+.browsers/
+.playwright/
+playwright-report/
+test-results/
+.smoke-*/
+*.log
+.DS_Store
+.idea/
+.vscode/

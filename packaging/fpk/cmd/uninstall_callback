@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "已卸载挂载管家；不会删除源目录中的任何数据。"

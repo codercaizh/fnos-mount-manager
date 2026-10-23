@@ -1,0 +1,5 @@
+{
+  "defaults": {"run-as": "root"},
+  "username": "fnos-mount-manager",
+  "groupname": "fnos-mount-manager"
+}

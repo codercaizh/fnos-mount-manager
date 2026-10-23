@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f8ff">
+<title>挂载管家</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><img src="icon.png" alt="" class="brand-icon"><div><h1>挂载管家</h1><span>目录映射</span></div></div>
+    <div id="health" class="health"><i></i><span>连接中</span></div>
+  </header>
+  <main>
+    <section class="section">
+      <div class="section-header">
+        <div class="titleline"><h2>我的挂载</h2><span id="total" class="count">0</span></div>
+        <button id="refresh" class="iconbtn" title="刷新状态" aria-label="刷新状态"></button>
+      </div>
+      <div id="records" class="records"></div>
+    </section>
+    <section class="section compose">
+      <div class="section-header"><h2>新建映射</h2><span class="hint-icon" id="info-btn" title="远程目录映射到本机共享目录"></span></div>
+      <div class="paths-row">
+        <button type="button" id="pick-source" class="path-tile" aria-label="选择来源目录">
+          <div class="tile-icon remote-icon" data-icon="cloud"></div>
+          <div class="tile-copy"><span>来源目录</span><strong id="source-label">选择文件夹</strong></div>
+          <span class="chevron" data-icon="chevron"></span>
+        </button>
+        <div class="transfer-icon" data-icon="arrowdown"></div>
+        <button type="button" id="pick-target" class="path-tile" aria-label="选择本地父目录">
+          <div class="tile-icon local-icon" data-icon="folder"></div>
+          <div class="tile-copy"><span>本地目录</span><strong id="target-label">选择文件夹</strong></div>
+          <span class="chevron" data-icon="chevron"></span>
+        </button>
+      </div>
+      <div class="fields">
+        <label class="name-label"><span>映射名称</span><input id="alias" maxlength="140" placeholder="例如：爸爸相册" autocomplete="off"></label>
+        <div class="mode-field"><span>访问权限</span><div class="segment" role="radiogroup" aria-label="访问权限">
+          <button class="selected" type="button" data-mode="ro" aria-pressed="true">只读</button>
+          <button type="button" data-mode="rw" aria-pressed="false">读写</button>
+        </div></div>
+      </div>
+      <div id="preview" class="preview hidden"></div>
+      <button id="create" class="primary" type="button"><span data-icon="plus"></span>创建映射</button>
+    </section>
+    <p class="foot">每分钟自动检测并恢复挂载 · 不修改原版备份应用</p>
+  </main>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

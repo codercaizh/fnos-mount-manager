@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$DIR/main" stop
+"${TRIM_APPDEST:?}/server/mountmgr" --cleanup --state "${TRIM_PKGVAR:?}/private/mounts.json"
+echo "应用管理的映射已安全卸载；远程源数据未删除。"
