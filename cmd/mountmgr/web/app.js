@@ -203,7 +203,7 @@ async function showRemoteShares(){
    const button=node('button','share-item');
    button.type='button';
    const label=node('strong','',share.name);
-   const subtitle=node('small','',share.labelSource==='fnos'?'飞牛挂载别名':share.labelSource==='semantic'?'飞牛文件路径名称':'SMB 共享地址（未获取系统别名）');
+   const subtitle=node('small','',share.subtitle||(share.labelSource==='fnos'?'飞牛挂载别名':share.labelSource==='semantic'?'飞牛文件路径名称':'SMB 共享地址（未获取系统别名）'));
    button.append(label,subtitle);
    // The real mount path is not a human-facing label; use it only as value.
    button.addEventListener('click',()=>{updateSelected('source',share.path);$('source-label').textContent=share.name;$('source-label').title=share.path;hideExtraDialog();});

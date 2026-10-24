@@ -71,3 +71,9 @@ Go tests simulate an empty mount-list response and a partial list. Every unmatch
 - Local directory creation happens **only** through the host picker (`creatable:true`); there is no app-specific folder creation button or API.
 - Go tests cover mountinfo parsing, `//server/share` fallback labels, decoding fnOS mount-list shapes, exact mountPoint matching (no cross-assignment), custom comments, and semantic path conversion.
 - **Real-device test still needed:** confirm `appcgi.mountmgr.list` or `trim.file.convertPath` is permitted to a privileged third-party FPK on this fnOS version and that the actual custom alias matches File Manager. If not available, check fallback displays recognizable share/server information. Confirm folder creation inside the native fnOS picker.
+
+## v1.2.3 / Native on-device config parsing
+
+Go tests create an artificial `mount_info.json` with two CIFS entries, configured aliases and dummy password fields. Tests assert exact mount-point matching (not list order), the intended two-line UI labels, unchanged local metadata and no credentials in serialized API results. Additional tests exercise config array/map wrappers, invalid JSON, missing files, 4 MiB size limit, local-first lookup precedence and API fallback.
+
+A real fnOS test must verify `/etc/mountmgr/mount_info.json` exists on the current firmware and contains mount metadata in one of the supported shapes. Do **not** upload this file, as it may contain passwords.

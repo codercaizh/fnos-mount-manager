@@ -26,3 +26,9 @@ Validated local/remote directory roots, strict basename validation, symlink chec
 Mount IDs allow the service to identify its own aliases before unmounting, including when the remote source goes offline. Unknown mounts are rejected; source files are never recursively removed. State files are private and atomically persisted (0600).
 
 A read-only alias does not encrypt content or change the underlying SMB credentials or ACLs. Report sensitive security issues privately rather than posting secrets or exploit information publicly.
+
+## Mount configuration confidentiality / 远程挂载配置安全
+
+The privileged service performs a **read-only** (up to 4 MiB) metadata lookup against `/etc/mountmgr/mount_info.json` to show native aliases. This system file may contain stored remote mount credentials. The program projects only allowed fields (`mountPoint`, `comment`, `userName`, `address`); it must never log, return, persist or upload the original JSON, `password` or authentication tokens. The original file is never modified. If lookup fails, safe label fallbacks are used.
+
+应用只读读取飞牛的远程挂载配置，用于匹配别名；配置可能包含 SMB 密码，严禁将完整文件上传至 Issue 或公开讨论，也不得把原始内容记录到日志。应用只返回挂载路径、别名及展示所需的用户/服务器信息。

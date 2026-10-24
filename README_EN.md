@@ -123,3 +123,11 @@ Click **Source Directory** to open a two-option dialog:
 The daemon first attempts to read `appcgi.mountmgr.list` over the authenticated fnOS API-scope socket, then `trim.file.convertPath`, and finally displays the SMB share/server parsed from the kernel mount source if those APIs are inaccessible. The last resort may differ from a user-defined fnOS alias on older firmware. SMB credentials are not exposed to the browser.
 
 The **Local Directory** tile only invokes the official picker with `directory: true` and `creatable: true`. The separate **New Folder** button and privileged folder-creation endpoint are gone. Whether fnOS shows its own New Folder action depends on host support (especially standalone App Auth).
+
+## v1.2.3: native SMB mount aliases from the on-device configuration
+
+On some fnOS versions, third-party API-scope calls for mount aliases return no data. In that case the picker previously showed a generic SMB share/server label.
+
+**The preferred metadata source is now a read-only lookup of `/etc/mountmgr/mount_info.json`** when running as an authorized privileged app. Only `mountPoint`, `comment`, `userName`, and `address` are decoded, and records are matched by exact mount point. The UI uses File Manager's two-line convention: **custom alias** above `username@server`.
+
+No system configuration is changed. Credential fields (including SMB passwords) are never passed to the web UI or written to logs. If the configuration is absent or inaccessible, the app still attempts the fnOS API and semantic-path fallbacks before showing SMB share/server. Native NAS firmware validation remains required.

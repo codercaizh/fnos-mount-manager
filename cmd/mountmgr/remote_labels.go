@@ -111,29 +111,40 @@ func decodedMountPoint(s string) string {
 	}
 	return path.Clean(s)
 }
-func aliasForMount(r mountRecord) string {
-	comment := strings.TrimSpace(r.Comment)
-	// Without an explicit alias, prefer readable SMB source fallback instead
-	// of exposing an opaque /vol02 mount point as the display label.
-	if comment == "" {
-		return ""
+func aliasPartsForMount(r mountRecord) (string, string) {
+	name := strings.TrimSpace(r.Comment)
+	if name == "" {
+		return "", ""
 	}
 	user := strings.TrimSpace(r.UserName)
 	if user == "" {
 		user = strings.TrimSpace(r.Username)
 	}
-	address := strings.TrimSpace(r.Address)
-	suffix := strings.Trim(strings.Join([]string{user, address}, "@"), "@")
-	if user != "" && address != "" {
-		suffix = user + "@" + address
+	server := strings.TrimSpace(r.Address)
+	if user != "" && server != "" {
+		return name, user + "@" + server
 	}
-	if suffix != "" {
-		return comment + " - " + suffix
+	if user != "" {
+		return name, user
 	}
-	return comment
+	return name, server
+}
+func aliasForMount(r mountRecord) string {
+	name, subtitle := aliasPartsForMount(r)
+	if name == "" {
+		return ""
+	}
+	if subtitle != "" {
+		return name + " - " + subtitle
+	}
+	return name
 }
 func applyMountAliases(shares []RemoteShare, records []mountRecord) {
 	for i := range shares {
+		// A validated local native alias has priority over API fallbacks.
+		if shares[i].LabelSource == "fnos" {
+			continue
+		}
 		expected := path.Base(shares[i].Path)
 		for _, r := range records {
 			// Trust the mount point when present. Never apply metadata for
@@ -145,9 +156,10 @@ func applyMountAliases(shares []RemoteShare, records []mountRecord) {
 			} else if r.Name != expected {
 				continue
 			}
-			label := aliasForMount(r)
-			if label != "" {
-				shares[i].Name = label
+			name, subtitle := aliasPartsForMount(r)
+			if name != "" {
+				shares[i].Name = name
+				shares[i].Subtitle = subtitle
 				shares[i].LabelSource = "fnos"
 			}
 			break
@@ -193,7 +205,30 @@ func enrichRemoteShares(ctx context.Context, shares []RemoteShare) {
 }
 
 func enrichRemoteSharesUsing(ctx context.Context, shares []RemoteShare, caller fnosCaller) {
+	enrichRemoteSharesWithLocal(ctx, shares, caller, func() ([]mountRecord, error) {
+		return readMountConfig(fnosMountConfigPath)
+	})
+}
+
+func allSharesHaveNativeAliases(shares []RemoteShare) bool {
+	for _, share := range shares {
+		if share.LabelSource != "fnos" {
+			return false
+		}
+	}
+	return true
+}
+
+func enrichRemoteSharesWithLocal(ctx context.Context, shares []RemoteShare, caller fnosCaller, local func() ([]mountRecord, error)) {
 	if len(shares) == 0 {
+		return
+	}
+	if local != nil {
+		if records, err := local(); err == nil {
+			applyMountAliases(shares, records)
+		}
+	}
+	if allSharesHaveNativeAliases(shares) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -204,14 +239,7 @@ func enrichRemoteSharesUsing(ctx context.Context, shares []RemoteShare, caller f
 			applyMountAliases(shares, list)
 			// On some firmwares the endpoint returns [] or mount records
 			// without a comment. We must still try semantic conversion.
-			resolved := true
-			for _, share := range shares {
-				if share.LabelSource != "fnos" {
-					resolved = false
-					break
-				}
-			}
-			if resolved {
+			if allSharesHaveNativeAliases(shares) {
 				return
 			}
 		}

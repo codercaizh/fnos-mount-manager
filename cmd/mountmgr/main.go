@@ -158,6 +158,7 @@ func getMount(ms []MountInfo, p string) (MountInfo, bool) {
 type RemoteShare struct {
 	Path        string `json:"path"`
 	Name        string `json:"name"`
+	Subtitle    string `json:"subtitle,omitempty"`
 	LabelSource string `json:"labelSource,omitempty"`
 }
 

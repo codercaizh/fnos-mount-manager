@@ -16,7 +16,7 @@ const server=http.createServer(async(req,res)=>{
  }
  if(pathname===base+'api/remote-shares'&&req.method==='GET'){
   res.writeHead(200,{'Content-Type':'application/json'});
-  res.end(JSON.stringify({items:[{path:'/vol02/1000-0-test',name:'家庭照片 - dad@192.168.1.10',labelSource:'fnos'},{path:'/vol02/1000-0-empty',name:'家庭备份 - mom@nas.local',labelSource:'smb'}]}));return;
+  res.end(JSON.stringify({items:[{path:'/vol02/1000-0-test',name:'爸爸相册',subtitle:'caizh@10.0.2.50',labelSource:'fnos'},{path:'/vol02/1000-0-empty',name:'妈妈相册',subtitle:'myp@10.0.2.50',labelSource:'fnos'}]}));return;
  }
  if(pathname===base+'api/create'&&req.method==='POST'){
   let body='';for await(const chunk of req)body+=chunk;
@@ -66,12 +66,12 @@ async function run(){
   await page.locator('#pick-source').click();
   await page.locator('.choice-item').nth(1).click();
   await page.locator('.share-item').nth(1).waitFor();
-  assert.equal(await page.locator('.share-item').nth(1).locator('strong').innerText(),'家庭备份 - mom@nas.local');
-  assert.match(await page.locator('.share-item').nth(1).locator('small').innerText(),/未获取系统别名/);
-  assert.match(await page.locator('.share-item').nth(0).locator('small').innerText(),/飞牛挂载别名/);
+  assert.equal(await page.locator('.share-item').nth(1).locator('strong').innerText(),'妈妈相册');
+  assert.equal(await page.locator('.share-item').nth(1).locator('small').innerText(),'myp@10.0.2.50');
+  assert.equal(await page.locator('.share-item').nth(0).locator('small').innerText(),'caizh@10.0.2.50');
   assert.equal(await page.locator('.share-item').nth(1).innerText().then(x=>x.includes('/vol02')),false,'Do not display internal paths in SMB list');
   await page.locator('.share-item').nth(1).click();
-  await page.locator('#source-label').getByText('家庭备份 - mom@nas.local').waitFor();
+  await page.locator('#source-label').getByText('妈妈相册').waitFor();
   assert.equal(await page.locator('#pick-source').getAttribute('data-path'),'/vol02/1000-0-empty');
   await page.locator('#pick-target').click();
   const dst=new URL(await page.evaluate(()=>window.__pickedURL));

@@ -21,10 +21,10 @@ func TestFnOSMountAliasesMatchExactPath(t *testing.T) {
 		{Name: "1000-0-abc-evil", MountPoint: "/vol02/1000-0-abc-evil", Comment: "不应使用"},
 	}
 	applyMountAliases(shares, records)
-	if shares[0].Name != "家庭相册 - dad@192.168.1.10" {
+	if shares[0].Name != "家庭相册" || shares[0].Subtitle != "dad@192.168.1.10" {
 		t.Errorf("wrong album alias: %s", shares[0].Name)
 	}
-	if shares[1].Name != "家庭备份 - mom@192.168.1.20" {
+	if shares[1].Name != "家庭备份" || shares[1].Subtitle != "mom@192.168.1.20" {
 		t.Errorf("wrong backup alias: %s", shares[1].Name)
 	}
 }
