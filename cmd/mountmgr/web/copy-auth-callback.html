@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>选择完成</title>
+<style>body{font:14px system-ui,-apple-system,sans-serif;margin:0;background:#f5f7fb;color:#3c4b60;display:grid;place-items:center;min-height:100vh}.box{background:white;padding:35px 28px;text-align:center;border-radius:15px;box-shadow:0 10px 40px #233c5b12}h2{font-size:17px;margin:12px 0}p{font-size:12px;color:#8c9aac}</style>
+</head>
+<body><main class="box"><div style="font-size:40px">✓</div><h2>目录选择已返回</h2><p>可关闭此窗口，返回 NAS 工具箱</p><button onclick="window.close()" style="border:none;background:#317ef5;color:white;padding:11px 23px;border-radius:8px">关闭</button></main>
+<script type="module">
+import {TrimApp} from './fnos-sdk.js';
+const app=new TrimApp();
+const result=app.parseAppAuthCallback(location.href);
+const data={type:'fnos-mount-manager:copy-picker',result};
+try{localStorage.setItem('fnos-mount-manager:copy-picker-result',JSON.stringify(result));}catch{}
+try{if(window.opener && !window.opener.closed){window.opener.postMessage(data,location.origin);}}catch{}
+if(result.status==='success'){window.setTimeout(()=>window.close(),700);}
+</script>
+</body></html>

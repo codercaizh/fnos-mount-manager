@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f7fc"><title>NAS 工具箱 · 快速复制</title>
+<link rel="stylesheet" href="copy-v206.css"></head><body>
+<div class="app">
+<header class="tool-header"><div class="tool-brand"><img src="icon.png" alt=""><div><strong>NAS 工具箱</strong><small>挂载与传输</small></div></div></header>
+<nav class="tool-tabs" aria-label="工具切换"><a href="./">目录映射</a><a href="copy-v206.html" class="active" aria-current="page">快速复制</a></nav>
+<main class="main"><div class="layout">
+<section class="panel compose">
+<h2 class="panel-title">新建任务</h2>
+<div class="field-head"><strong>来源</strong><span id="source-count">未选择</span></div>
+<button type="button" id="pick-source" class="target-tile"><span class="folder-mark">▣</span><span class="path-copy"><strong>选择文件或文件夹</strong></span><span class="arrow">›</span></button>
+<div id="sources" class="sources hidden"></div>
+<div class="field-head next-field"><strong>目标目录</strong></div>
+<button type="button" id="pick-target" class="target-tile"><span class="folder-mark">▣</span><span class="path-copy"><strong id="target-text">选择目录</strong></span><span class="arrow">›</span></button>
+<div class="field-head next-field"><strong>传输设置</strong></div>
+<div class="setting-grid">
+<label class="setting"><span>并行数</span><span class="input-wrap"><input type="number" min="1" max="256" id="parallel" value="4" inputmode="numeric"><small>路</small></span></label>
+<div class="setting"><span>校验模式</span><div class="switch-list">
+<label><input type="radio" name="verify" value="size" checked><span>快速 <small>名称 + 大小</small></span></label>
+<label><input type="radio" name="verify" value="content"><span>严格 <small>完整内容校验</small></span></label>
+</div></div>
+</div>
+<button class="primary" type="button" id="create">开始复制</button>
+</section>
+<section class="panel monitor">
+<div class="monitor-heading"><h2 class="panel-title">最近传输任务</h2><div class="monitor-actions"><div class="connection" id="connection"><span class="dot"></span><span>连接中</span></div><button type="button" id="refresh" class="refresh" aria-label="刷新">↻</button></div></div>
+<div id="jobs" class="jobs"><div class="empty-queue"><span>◴</span><p>暂无任务</p></div></div>
+</section>
+</div></main></div>
+<div id="toast" class="toast hidden" role="status"></div>
+<script src="copy-v206.js" type="module"></script></body></html>

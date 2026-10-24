@@ -45,13 +45,15 @@ jobs:
           curl -fsSL https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64 -o dist/fnpack-linux-amd64
           echo "54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93  dist/fnpack-linux-amd64" | sha256sum -c -
           chmod 755 dist/fnpack-linux-amd64
+      - name: Download and verify pinned rclone binaries
+        run: bash scripts/fetch-rclone.sh
       - name: Build ARM64 and x86_64 FPK
         run: bash scripts/build.sh
       - name: Verify platform, ELF and package checksums
         run: python3 scripts/verify-fpk.py
       - uses: actions/upload-artifact@v4
         with:
-          name: fnos-mount-manager-fpk
+          name: nas-toolbox-fpk
           path: |
             dist/*.fpk
             dist/*.fpk.sha256
@@ -66,7 +68,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: fnos-mount-manager-fpk
+          name: nas-toolbox-fpk
           path: release
       - name: Publish GitHub Release
         env:
@@ -79,5 +81,5 @@ jobs:
           fi
           gh release create "$REF_NAME" release/*.fpk release/*.fpk.sha256 \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Mount Manager $REF_NAME" \
-            --notes "ARM64 and x86_64 fnOS FPK packages. Select matching CPU and verify SHA-256. Privileged root/CAP_SYS_ADMIN application; test disposable data first. / 双架构 FPK，请选择匹配 CPU 的安装包并核验校验值。"
+            --title "NAS Toolbox $REF_NAME" \
+            --notes "NAS Toolbox: folder mapping + rclone copying, ARM64 and x86_64 FPKs. Verify SHA-256 and test on your fnOS device. / NAS 工具箱：目录映射 + 快速复制，双架构安装包；升级挂载管家请直接覆盖安装，不要卸载以免丢失配置。"

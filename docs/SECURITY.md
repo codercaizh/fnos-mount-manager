@@ -32,3 +32,15 @@ A read-only alias does not encrypt content or change the underlying SMB credenti
 The privileged service performs a **read-only** (up to 4 MiB) metadata lookup against `/etc/mountmgr/mount_info.json` to show native aliases. This system file may contain stored remote mount credentials. The program projects only allowed fields (`mountPoint`, `comment`, `userName`, `address`); it must never log, return, persist or upload the original JSON, `password` or authentication tokens. The original file is never modified. If lookup fails, safe label fallbacks are used.
 
 应用只读读取飞牛的远程挂载配置，用于匹配别名；配置可能包含 SMB 密码，严禁将完整文件上传至 Issue 或公开讨论，也不得把原始内容记录到日志。应用只返回挂载路径、别名及展示所需的用户/服务器信息。
+
+## NAS Toolbox 2.x 的复制服务 / Copy service security
+
+新版本的 **快速复制**与挂载管理共享同一个 privileged Go 进程及飞牛网关 socket，接口均依赖飞牛官方鉴权。复制变更 API（`/api/copy/create`、`/api/copy/pause`、`/api/copy/resume` 等）另要求 `Content-Type: application/json` 与 `X-Fnos-Quickcopy-UI: 1`，并拒绝明确的跨站 Fetch Metadata 请求。为了兼容旧 WebView，旧版 `/api/pause`、`/api/resume` 仅在含专属复制请求头时转到复制引擎。它们不代替服务端用户鉴权，也不授权第三方跨域访问。
+
+复制仅允许已验证的飞牛用户共享目录 / 远程挂载路径，禁止 source/destination 相互包含、符号链接路径及系统目录。rclone 仅执行 `copy` 或 `copyto`，不会执行 `sync` 或删除源文件；**但存在名称冲突时，已有目标文件可能被覆盖**。如果需要严格一致性校验，复制后执行源/目标完整内容检查，额外消耗网络与磁盘 I/O。应用不保存 SMB 密码。
+
+暂停与重启后的“继续”以完整文件为单位跳过，不保证单文件的分块重传。多个 rclone 子进程最多共享配置的并行预算，管理员仍应根据 NAS 内存、磁盘寿命、网络能力设置合理并行度。缓存的旧页面与新版 API 之间有兼容路由，但推荐升级后关闭再打开客户端。
+
+已完成任务只保留最近三条摘要，**暂停/失败任务仍会保留路径信息**。JSON 记录可能包含个人文件名及 NAS 目录结构，仅存放于私有数据目录；Issue 中的路径与日志需要脱敏。`rclone` 二进制来自校验过 SHA-256 的官方发行包，不作为本仓库自有代码分发。
+
+**English:** Copy endpoints require the same authenticated fnOS gateway plus JSON and a distinct custom request header. A legacy pause/resume route is accepted only with that header. Paths are restricted, symlinks and overlapping trees rejected; rclone copy never deletes sources but can replace conflicting destinations. Task state may contain private filenames. Concurrency and checksums increase resource usage, and a partially transferred individual file may be restarted after interruption.

@@ -9,6 +9,7 @@ cd "$ROOT"
 mkdir -p dist
 if [[ ! -d node_modules ]]; then npm ci --ignore-scripts --no-audit --no-fund; fi
 npm run prepare:sdk
+node scripts/render-toolbox-icon.cjs
 "$GO_BIN" test ./...
 if [[ ! -x "$FNPACK_BIN" ]]; then
   echo "fnpack is missing: $FNPACK_BIN (see README)" >&2
@@ -25,10 +26,15 @@ for platform in arm x86; do
   cp -a packaging/fpk/. "$stage/"
   sed -i -e "s/^platform=.*/platform=\"$platform\"/" "$stage/manifest"
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" "$GO_BIN" build -trimpath -ldflags="-s -w" -o "$stage/app/server/mountmgr" ./cmd/mountmgr
-  chmod 755 "$stage/app/server/mountmgr"
+  if [[ ! -x "$ROOT/dist/rclone-$goarch" ]]; then
+    echo "Missing rclone for $goarch; run bash scripts/fetch-rclone.sh" >&2
+    exit 1
+  fi
+  cp "$ROOT/dist/rclone-$goarch" "$stage/app/server/rclone"
+  chmod 755 "$stage/app/server/mountmgr" "$stage/app/server/rclone"
   find "$stage/cmd" -type f -exec chmod 755 {} +
   "$FNPACK_BIN" build --directory "$stage"
-  out="dist/fnos-mount-manager-${VERSION}-${suffix}.fpk"
+  out="dist/nas-toolbox-${VERSION}-${suffix}.fpk"
   mv -f fnos-mount-manager.fpk "$out"
   (cd dist && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
   echo "Built: $out"

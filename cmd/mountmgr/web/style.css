@@ -84,3 +84,9 @@ main{display:flex;flex-direction:column;gap:18px}
  .record-actions{width:100%;justify-content:flex-end;border-top:1px solid #edf0f7;padding-top:7px}
  .action{width:37px;height:33px}
 }
+
+.tool-tabs{display:flex;gap:8px;border:1px solid #e9eef7;background:#fff;padding:6px;margin:-5px 0 18px;border-radius:13px}
+.tool-tabs a{text-align:center;flex:1;text-decoration:none;color:#788ba6;padding:10px 12px;border-radius:9px;font-size:13px;font-weight:700}
+.tool-tabs a.active{background:#eaf1ff;color:#326bd7}
+.tool-tabs a:hover:not(.active){background:#f5f8fd}
+@media(max-width:600px){.tool-tabs{margin:-8px 0 15px}}

@@ -24,6 +24,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"fnos-mount-manager/internal/copyengine"
 )
 
 //go:embed web/*
@@ -49,6 +51,7 @@ type Record struct {
 }
 type Store struct {
 	sync.Mutex
+	copier  *copyengine.Manager
 	file    string
 	Records []*Record `json:"records"`
 }
@@ -336,6 +339,79 @@ func mountBind(source, target, mode string) error {
 	}
 	return nil
 }
+
+// aliasRecoveryRoot defines the highest existing directory we trust for
+// rebuilding an application's owned target alias. For fnOS volume paths,
+// never create the volume or UID directory: both must already be available.
+// Only records under fnOS user storage can reach reconcile in production
+// (load/create paths validate them); the fallback keeps unit fixtures local.
+func aliasRecoveryRoot(target string) string {
+	components := pieces(target)
+	if localPath(target, true) && len(components) >= 4 {
+		return filepath.Join("/", components[0], components[1])
+	}
+	return filepath.Dir(target)
+}
+
+// ensureAliasTargetUnderRoot rebuilds a missing target path from an existing
+// trusted root, one component at a time. No permissions of existing folders
+// are changed and no pre-existing file, symlink, or mount is overwritten.
+func ensureAliasTargetUnderRoot(r *Record, root string) error {
+	target := filepath.Clean(r.Target)
+	root = filepath.Clean(root)
+	if !filepath.IsAbs(target) || !filepath.IsAbs(root) ||
+		target == root || !strings.HasPrefix(target, root+string(filepath.Separator)) {
+		return errors.New("挂载目标不在允许恢复的目录范围内")
+	}
+	if err := checkNoSymlink(root); err != nil {
+		return fmt.Errorf("存储卷或共享目录根路径不可用，不能自动重建: %w", err)
+	}
+	if err := checkNoSymlink(target); err == nil {
+		return nil
+	}
+	if !r.Owned {
+		return errors.New("目标目录已消失，且不是本应用创建的目录；请手动恢复后重试")
+	}
+
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("目标目录不在安全的恢复范围内")
+	}
+	cur := root
+	for _, component := range strings.Split(rel, string(filepath.Separator)) {
+		if err := strictName(component); err != nil {
+			return fmt.Errorf("待恢复目录名称异常: %w", err)
+		}
+		cur = filepath.Join(cur, component)
+		fi, err := os.Lstat(cur)
+		if errors.Is(err, os.ErrNotExist) {
+			// Mkdir creates *only* this component. Do not call MkdirAll on
+			// an arbitrary path; validate each newly reached component.
+			if err = os.Mkdir(cur, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("自动恢复目录 %s 失败: %w", cur, err)
+			}
+			fi, err = os.Lstat(cur)
+		}
+		if err != nil {
+			return fmt.Errorf("检查目录 %s 失败: %w", cur, err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			return fmt.Errorf("路径 %s 是文件或符号链接，拒绝覆盖", cur)
+		}
+	}
+	if err := checkNoSymlink(target); err != nil {
+		return fmt.Errorf("目录恢复后的安全校验失败: %w", err)
+	}
+	return nil
+}
+
+// ensureAliasTarget only re-creates paths belonging to application-owned
+// mappings. It can rebuild multiple missing layers below a healthy volume
+// and UID directory, but never creates a missing volume or user-storage root.
+func ensureAliasTarget(r *Record) error {
+	return ensureAliasTargetUnderRoot(r, aliasRecoveryRoot(r.Target))
+}
+
 func reconcile(s *Store, r *Record, ms []MountInfo) bool {
 	oldSt, oldErr, oldID := r.Status, r.Error, r.MountID
 	r.Checked = time.Now().Format("2006-01-02 15:04:05")
@@ -387,7 +463,7 @@ func reconcile(s *Store, r *Record, ms []MountInfo) bool {
 			errMsg = "目标已由其他挂载占用，未覆盖"
 		}
 	default:
-		if err := checkNoSymlink(r.Target); err != nil {
+		if err := ensureAliasTarget(r); err != nil {
 			r.Status = "error"
 			errMsg = "目标路径不可用: " + err.Error()
 			break
@@ -485,6 +561,30 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if strings.HasPrefix(path, base) {
 		path = "/" + strings.TrimPrefix(path, base)
+	}
+	// Legacy Quick Copy clients (cached inside fnOS WebView) sent /api/pause
+	// and /api/resume. Route them to the merged copy engine only when using
+	// the copy app's dedicated request header, never for Mount Manager calls.
+	if r.Method == "POST" && (path == "/api/pause" || path == "/api/resume") &&
+		r.Header.Get("X-Fnos-Quickcopy-UI") == "1" {
+		if s.copier == nil {
+			fail(w, 503, "复制服务未启动")
+			return
+		}
+		request := r.Clone(r.Context())
+		request.URL.Path = path
+		s.copier.Serve(w, request)
+		return
+	}
+	if strings.HasPrefix(path, "/api/copy/") {
+		if s.copier == nil {
+			fail(w, 503, "复制服务未启动")
+			return
+		}
+		request := r.Clone(r.Context())
+		request.URL.Path = "/api/" + strings.TrimPrefix(path, "/api/copy/")
+		s.copier.Serve(w, request)
+		return
 	}
 	if path == "/api/remote-shares" && r.Method == "GET" {
 		ms, err := mounts()
@@ -870,7 +970,7 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 		return
 	}
-	if (path == "/app.js" || path == "/style.css" || path == "/fnos-sdk.js" || path == "/auth-callback.html" || path == "/icon.png") && r.Method == "GET" {
+	if (path == "/app.js" || path == "/style.css" || path == "/fnos-sdk.js" || path == "/auth-callback.html" || path == "/icon.png" || path == "/copy.html" || path == "/copy.css" || path == "/copy.js" || path == "/copy-auth-callback.html" || path == "/copy-v206.html" || path == "/copy-v206.js" || path == "/copy-v206.css") && r.Method == "GET" {
 		b, e := assets.ReadFile("web" + path)
 		if e != nil {
 			http.NotFound(w, r)
@@ -923,6 +1023,8 @@ func main() {
 	socket := flag.String("socket", "", "unix socket path")
 	state := flag.String("state", "", "private state JSON path")
 	group := flag.String("socket-group", "", "gateway socket group (optional)")
+	copyState := flag.String("copy-state", "", "copy task state, defaults to sibling of mount state")
+	rcloneBin := flag.String("rclone", "", "embedded rclone binary")
 	cleanupOnly := flag.Bool("cleanup", false, "safely unmount app-managed aliases for uninstall")
 	flag.Parse()
 	if *state == "" {
@@ -943,6 +1045,28 @@ func main() {
 	}
 	if *socket == "" {
 		log.Fatal("missing --socket")
+	}
+	if *copyState == "" {
+		*copyState = filepath.Join(filepath.Dir(*state), "copies.json")
+	}
+	if *rcloneBin == "" {
+		exe, e := os.Executable()
+		if e != nil {
+			log.Fatal(e)
+		}
+		*rcloneBin = filepath.Join(filepath.Dir(exe), "rclone")
+	}
+	copier, e := copyengine.NewManager(*copyState, *rcloneBin)
+	if e != nil {
+		log.Fatal("load copy service: ", e)
+	}
+	s.copier = copier
+	// Upgrade in place from Mount Manager: preserve mounts.json. If the
+	// standalone Quick Copy app still exists, import its completed jobs.
+	if n, err := copier.ImportCompletedHistory("/var/apps/fnos-quick-copy/var/private/tasks.json"); err != nil {
+		log.Printf("standalone completed copy history import: %v", err)
+	} else if n > 0 {
+		log.Printf("imported %d completed copy jobs", n)
 	}
 	if e = os.MkdirAll(filepath.Dir(*socket), 0755); e != nil {
 		log.Fatal(e)
@@ -980,8 +1104,8 @@ func main() {
 	server := &http.Server{Handler: http.HandlerFunc(s.serve), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
-	go func() { <-signals; _ = server.Close() }()
-	log.Printf("fnOS Mount Manager serving via %s, %d records", *socket, len(s.Records))
+	go func() { <-signals; s.copier.Stop(); _ = server.Close() }()
+	log.Printf("NAS Toolbox serving via %s, %d mount records", *socket, len(s.Records))
 	e = server.Serve(ln)
 	if e != nil && !errors.Is(e, http.ErrServerClosed) && !errors.Is(e, io.EOF) {
 		log.Fatal(e)

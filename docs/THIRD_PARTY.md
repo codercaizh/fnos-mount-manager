@@ -11,3 +11,18 @@ Official `fnpack 1.2.3` is used as an **external build tool** and is not committ
 ## 中文
 
 本项目自有 Go、HTML、CSS、JS、脚本与图标采用 MIT。官方 fnOS SDK (`@trimjs/web-app`) 与打包器 `fnpack` 均来自第三方，其版权与分发条款由上游维护者决定；请在再次分发时核查对应授权，不要将其压缩发行版声明为本仓库原创代码。`@resvg/resvg-js` 与 `playwright` 仅用于构建/测试，不进入运行包。
+
+
+## Bundled rclone / 内置 rclone
+
+NAS Toolbox bundles the **unmodified upstream rclone v1.75.2 executable**
+for Linux/ARM64 and Linux/amd64 in each corresponding FPK.
+The executables come from <https://downloads.rclone.org/v1.75.2/> and
+are SHA-256 checked against the release-specific ZIP hashes in
+scripts/fetch-rclone.sh. rclone is a separate third-party project:
+<https://github.com/rclone/rclone>. Its own licenses and notices remain
+applicable; embedding it does not transfer copyright to this repository.
+
+快速复制使用内置 rclone 1.75.2，不依赖 NAS 全局 rclone 安装。
+源码仓库不提交 rclone 二进制。构建前脚本按官方发行包的
+SHA-256 校验下载文件；重新分发仍需遵守上游授权条款。

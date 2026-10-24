@@ -14,3 +14,7 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+
+# Local Python test artifacts
+__pycache__/
+*.py[cod]

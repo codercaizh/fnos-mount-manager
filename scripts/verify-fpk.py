@@ -12,7 +12,7 @@ match = re.search(r'^version="([^"]+)"', manifest, re.M)
 assert match, "missing version"
 version = match.group(1)
 for suffix, platform, machine in (("arm64", "arm", 183), ("x86_64", "x86", 62)):
-    path = root / "dist" / f"fnos-mount-manager-{version}-{suffix}.fpk"
+    path = root / "dist" / f"nas-toolbox-{version}-{suffix}.fpk"
     assert path.is_file(), path
     with tarfile.open(path, "r:gz") as outer:
         members = set(outer.getnames())
@@ -28,10 +28,19 @@ for suffix, platform, machine in (("arm64", "arm", 183), ("x86_64", "x86", 62)):
         assert fields.get("platform") == platform, fields
         with tarfile.open(fileobj=io.BytesIO(outer.extractfile("app.tgz").read()), mode="r:gz") as inner:
             files = set(inner.getnames())
-            assert {"server/mountmgr", "ui/config", "ui/images/icon_256.png"} <= files
+            assert {"server/mountmgr", "server/rclone", "ui/config",
+                    "ui/images/toolbox_v202_64.png", "ui/images/toolbox_v202_256.png"} <= files
             header = inner.extractfile("server/mountmgr").read(64)
             assert header.startswith(b"\x7fELF")
-            assert struct.unpack("<H", header[18:20])[0] == machine, "wrong ELF machine"
+            assert struct.unpack("<H", header[18:20])[0] == machine, "wrong Go ELF machine"
+            rclone_header = inner.extractfile("server/rclone").read(64)
+            assert rclone_header.startswith(b"\x7fELF")
+            assert struct.unpack("<H", rclone_header[18:20])[0] == machine, "wrong rclone ELF machine"
+            import json
+            config = json.load(inner.extractfile("ui/config"))
+            assert "fnos-mount-manager.toolbox" in config[".url"]
+            assert config[".url"]["fnos-mount-manager.toolbox"]["icon"] == "images/toolbox_v202_{0}.png"
+            assert config[".url"]["fnos-mount-manager.main"].get("noDisplay") is True
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     expected_digest = (path.parent / (path.name + ".sha256")).read_text().split()[0]
     assert digest == expected_digest

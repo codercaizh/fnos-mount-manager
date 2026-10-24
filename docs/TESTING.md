@@ -1,12 +1,12 @@
-# Test plan / 测试与验收
+# NAS 工具箱测试与验收 / Testing
 
-[中文](#自动化测试) · [English](#automated-validation)
+[返回 README](../README.md) · [English README](../README_EN.md)
 
-## 自动化测试
+## 自动化测试 / Automated tests
 
-开发环境：Go 1.22+、Node.js 22+、可访问 npm 与官方 fnpack 的 Linux x86_64 构建机。
+环境：Go 1.23+、Node.js 22+、官方 fnpack 1.2.3（打包时需要）。CI 使用 Ubuntu 24.04。
 
-```bash
+~~~bash
 npm ci --ignore-scripts
 npm run prepare:sdk
 go test ./... -count=1
@@ -15,79 +15,64 @@ go vet ./...
 npm run test:syntax
 npx playwright install chromium
 npm run test:ui
+
+bash scripts/fetch-rclone.sh
 bash scripts/build.sh
-```
+python3 scripts/verify-fpk.py
+~~~
 
-| 检查 | 覆盖 |
-|---|---|
-| 路径/配置 | 本地与远程目录白名单、名称约束、符号链接、目标嵌套、读写模式与无效 JSON |
-| 持久化 | JSON 保存与恢复、权限 `0600`、配置损坏和重复记录拒绝 |
-| HTTP/API | 允许路由、静态资源 Content-Type、创建参数、错误状态与正确请求头 |
-| 网关 CSRF | 内部 Host/浏览器 Origin 不一致、跨站 Fetch Metadata、非 JSON 或缺少自定义头 |
-| mount syscall 模拟 | bind 参数、只读 remount、remount 失败回滚、非空目标保护 |
-| 映射状态机 | 自动挂载、来源离线、失效挂载、停用卸载、外部挂载冲突与 EBUSY |
-| 浏览器 Playwright | 手机宽度白底 UI、官方选择器授权回调模拟、中文路径、读写切换、创建请求 |
-| FPK 校验 | 双架构 manifest、ARM64 ELF e_machine=183、x86_64 ELF e_machine=62、图标和 cmd |
+测试使用模拟的 fnOS HTTP 网关、官方文件选择器回调及 Linux 挂载系统调用；**不会在 CI 中触碰真实 NAS 数据或挂载 SMB**。
 
-**注意：** Go syscall 单测使用替身函数拦截内核 mount/umount；它们不会执行真实特权挂载。Playwright 模拟了宿主的目录回调及本地 JSON API；不能替代 fnOS 真实宿主桥接器集成。
+### 已覆盖的主要场景 / Coverage matrix
 
-## fnOS 真机验收矩阵（发布前仍需现场验证）
+| 模块 | 场景 | 自动化检查 |
+|---|---|---|
+| 映射配置 | 来源/目标校验、同名与同源冲突、SMB 别名解析 | cmd/mountmgr/*_test.go |
+| 挂载状态机 | bind/只读 remount、卸载、重试、断线恢复、已有数据保护 | mount_lifecycle_test.go |
+| 多级目录恢复 | owned 映射逐级重建、重试幂等、非自有目录拒绝、缺失卷根、symlink/普通文件冲突 | alias_recovery_test.go |
+| Web 安全 | 网关 Origin 与内部 Host 不一致、CSRF 自定义头、Content-Type 校验 | api_security_test.go |
+| 复制路由兼容 | 标准 /api/copy/pause 与旧 /api/pause 都有明确 JSON 响应，缺少专有标识时拒绝兼容路由 | copy_pause_compat_test.go |
+| 任务历史 | 仅导入旧版最近 3 条完成记录、避免重复导入、保留私有记录 | internal/copyengine/engine_test.go |
+| 实时文件进度 | rclone 的 checks + transfers 计数、跨来源聚合、重复样本幂等与边界检查 | realtime_files_test.go |
+| 多来源并行 | 8 个独立文件最多同时运行 8 个工作位，单来源状态正确持久化 | concurrent_integration_test.go（受环境限制） |
+| 目录映射 UI | 官方选择器回调、远程别名、移动端布局、创建和修改交互 | scripts/ui-smoke.cjs |
+| 合并 UI | 目录映射/复制切换、最近记录展开后来源/目标路径、来源选择与创建参数 | scripts/ui-toolbox-smoke.cjs |
+| 复制手机 UI | 活动文件列表、已完成文件数、长路径、320/360/375/390/412/430px 宽度无横向溢出 | scripts/ui-copy-overflow-smoke.cjs |
+| 发布制品 | FPK 内容、manifest 平台、Go/rclone ELF 架构、图标入口、SHA256 | scripts/verify-fpk.py |
 
-1. **安装与开机**：分别在 ARM64、x86_64 的 fnOS 上手动安装对应 FPK，确认管理员权限、启动与桌面入口，查看 `TRIM_PKGVAR/service.log`。
-2. **原生目录选择器**：在 fnOS 网页端、移动客户端打开，来源可以看到“远程挂载”，目标可见本地共享目录，选择路径成功回填。
-3. **只读源**：映射含少量非敏感文件的 SMB 测试目录；原版备份应用可以列目录并读取；经映射尝试写入应被拒绝。
-4. **读写目标**：在测试目录恢复一份小文件，检查 SMB 原位置内容/大小一致；用自身账号/ACL 检查可写性。
-5. **冲突保护**：尝试选择已有非空目标、另一个映射的子目录、symlink 或系统目录，确保拒绝且原数据不变。
-6. **映射管理**：执行启用、停用、重命名、重试、删除，检查源文件始终不被删除；占用时 EBUSY 不应强制卸载。
-7. **网络故障**：中断远程 CIFS，待 fnOS 原挂载恢复后检查状态与自动重挂。该应用不负责 SMB 重拨。
-8. **重启与升级**：系统重启、应用停启及覆盖升级后，配置仍存在，自动恢复记录，并且不会卸载不属于本应用的挂载。
-9. **兼容性**：验证原版「备份飞牛」和「备份到飞牛」模式，在真机保存测试结果。
+独立多文件的并发**隔离集成测试**可在已准备好 /vol99/1000 的测试服务器执行：
 
-验收失败请提交 Issue，带上 fnOS 版本、`uname -m`、脱敏状态/日志、准确操作步骤。**绝对不要**上传 CIFS 密码、内部认证 cookie、真实私人文件或云端 Token。
+~~~bash
+RUN_FNOS_PARALLEL_INTEGRATION=1 go test ./internal/copyengine -run TestEightIndependentFilesAreCopiedConcurrently -count=1 -v
+~~~
 
-## Automated validation
+此测试只在测试共享根目录下创建/清理临时文件，使用可观测并发的模拟 rclone 可执行文件，不会连接外部 SMB。**生产设备不需要也不建议运行**。
 
-Run the command block above after `npm ci`. Go tests include validation and persistence, handler and CSRF rules, mocked Linux bind mount/remount/unmount, rollback, mount ownership and offline behavior. Playwright performs a mobile-sized UI smoke test with a **simulated native picker callback** and a mocked local API, including create-request serialization.
+## fnOS 真机验收（需要人工验证）
 
-The `scripts/build.sh` command cross-compiles both ARM64 and x86_64 binaries and produces two architecture-specific FPK files using the official `fnpack` tool. The release workflow also checks the declared manifest platform against each ELF machine type.
+1. **覆盖升级**：从原挂载管家升级到 NAS 工具箱，不先卸载。确认原有映射与名称、目标、模式均保留，后台只需一个 mountmgr 服务。
+2. **原生选择器**：分别用手机与网页端验证文件单选、多选、文件夹和目标目录选择。不同 fnOS 版本的混选能力可能不同。
+3. **远程路径**：先由飞牛连接 SMB；确认两个不同远程目录能映射为同一父目录下的两个独立别名，源与目的不串联。
+4. **只读与读写**：使用测试数据验证只读映射的写入被拒绝、读写映射仍受远程 SMB ACL 限制。
+5. **离线与恢复**：模拟远程 SMB 断开并由飞牛恢复连接，确认映射状态与自动恢复。工具箱自身不负责 SMB 重拨。
+6. **整条目录链重建**：对于 owned=true 的映射，在关闭并解除映射后只清理测试用空挂载点、部分父目录，恢复时应逐级建立；卷根缺失、符号链接、非空目标或 owned=false 必须拒绝。
+7. **复制内容**：选择多个独立文件、嵌套目录、中文和特殊字符名称；核对目标大小与目录结构。严格模式可用同大小不同内容的测试文件验证校验逻辑。
+8. **并发与进度**：并行数 8，使用大量测试文件核验实际活动传输数、即时字节数、完成文件数、速度与 ETA 是否更新；活动并发不会一直恒等于 8。
+9. **暂停、恢复与重启**：复制进行中暂停，确认 UI 和后端状态同步；升级或重启后手动继续，确认已完成文件跳过、中断文件可重新复制，不出现多份任务同时写入。
+10. **历史记录**：完成任务只保留最近 3 条，点击展开能看到逐项来源和目标；旧独立快速复制完成记录导入后不重复。
+11. **安装包和图标**：ARM64 / x86-64 两架构都要安装验证。退出并重新进入飞牛手机端检查高清图标和页面资源缓存。
+12. **数据安全**：确认只执行 copy 而非 sync，不会删除来源；同名目标内容变化时可能重传或覆盖，必须用测试数据验证。
 
-**No destructive hardware test is executed in CI.** The nine hardware steps above remain manual tasks on a disposable SMB share and both supported NAS architectures.
+## 已知验证边界 / Known limitations
 
-## Known verification boundaries
+- Mocked mount syscalls, fnOS gateway and picker are **not the real firmware**. Exact API权限、内核 CIFS 行为、系统升级/卸载脚本及 ACL 仍需真机验证。
+- 自动化脚本不会主动断开真实 SMB、操作用户存储卷或执行生产目录的删除操作。
+- 大文件字节级断点续传并非此应用保证；部分被中断文件会重新传输。
+- GitHub Actions 的构建通过不代表已在每个 fnOS 固件版本的 NAS 上安装成功。
+- 复现问题时请提供 fnOS 版本、架构、操作步骤、脱敏日志和测试文件信息；**不要提供 SMB 密码、令牌、私人照片、Cookie 或整份远程挂载配置**。
 
-- Simulated bind mount syscalls are not equivalent to a real mount namespace, kernel CIFS behavior or fnOS ACLs.
-- No actual SMB network fault injection is run during CI.
-- Root capability and startup service behavior depend on fnOS firmware policy; CI cannot certify a particular NAS version.
-- No write workload is performed on production shares.
+## English
 
-## v1.2.2 / Empty and partial mount metadata responses
+Automated tests cover mount validation and lifecycle, safe multi-level owned-directory recovery, API and gateway security, legacy/new pause routing, concurrency, file counts from rclone JSON statistics, completed-history import and all relevant mobile UI pages. CI also validates both FPKs and embedded Go/rclone ELF architectures.
 
-Go tests simulate an empty mount-list response and a partial list. Every unmatched mount must continue through the semantic `trim.file.convertPath` fallback, while matched native custom aliases remain unchanged. Browser tests verify the native-alias versus fallback provenance text. fnOS hardware permissions remain unverified.
-
-## v1.2.1 source dialog and alias verification
-
-- The browser smoke test checks the source click **does not** immediately launch the SDK, shows **Choose Folder** / **Choose Remote Directory**, and that the former starts the official fnOS picker.
-- The SMB list shows human-readable display labels, not opaque `/vol02/...` paths. Selecting an alias must still submit the **correct original root** as the mapping source.
-- Local directory creation happens **only** through the host picker (`creatable:true`); there is no app-specific folder creation button or API.
-- Go tests cover mountinfo parsing, `//server/share` fallback labels, decoding fnOS mount-list shapes, exact mountPoint matching (no cross-assignment), custom comments, and semantic path conversion.
-- **Real-device test still needed:** confirm `appcgi.mountmgr.list` or `trim.file.convertPath` is permitted to a privileged third-party FPK on this fnOS version and that the actual custom alias matches File Manager. If not available, check fallback displays recognizable share/server information. Confirm folder creation inside the native fnOS picker.
-
-## v1.2.3 / Native on-device config parsing
-
-Go tests create an artificial `mount_info.json` with two CIFS entries, configured aliases and dummy password fields. Tests assert exact mount-point matching (not list order), the intended two-line UI labels, unchanged local metadata and no credentials in serialized API results. Additional tests exercise config array/map wrappers, invalid JSON, missing files, 4 MiB size limit, local-first lookup precedence and API fallback.
-
-A real fnOS test must verify `/etc/mountmgr/mount_info.json` exists on the current firmware and contains mount metadata in one of the supported shapes. Do **not** upload this file, as it may contain passwords.
-
-## v1.2.4 / Reproduced real nested fnOS configuration layout
-
-A published mount-script reads `/etc/mountmgr/mount_info.json` with two nested `to_entries[]` passes. CI now tests exactly that two-level user ID / mount ID structure, including three mounts from two users, Chinese comments, usernames/hosts, dummy credential fields, out-of-order mounts, missing aliases, non-mount records and depth limit checks.
-
-This previously failed in v1.2.3 and now succeeds. Reading the mounted NAS's real file is still outside n2 build-agent capabilities.
-
-## v1.2.5 / Two distinct sources under one local parent
-
-A new multi-record Go test verifies that two sibling target aliases (`爸爸相册` and `妈妈相册`) can coexist with two distinct `/vol02/<mount-id>` sources, while reusing either exact source is rejected. Mocked bind syscalls verify each alias receives its **own source path**, not the previous one.
-
-The browser smoke test now creates a Mom mapping, checks that the source picker resets (local parent stays selected), tries unsuccessfully to create Dad by merely changing the name, then selects the separate Dad SMB root and creates the second mapping. It tests explicit alias/name mismatch confirmation and the safe correction flow: disable → Change source → re-enable.
-
-Go tests also check disabled metadata edits preserve target names and other records, and that failure to persist a source change rolls the in-memory record back. Real mounted SMB file contents and the fnOS-specific backup integration still require device-level validation.
+Hardware acceptance testing remains necessary for real SMB outages, kernel mount privileges, ACLs, fnOS app gateway behavior, in-place migration, and mobile application caching. Use disposable directories and redact logs before sharing them.

@@ -16,16 +16,16 @@ running() {
 }
 case "${1:-}" in
  start)
-  [[ "$(id -u)" -eq 0 ]] || { echo '挂载管家需要 root/CAP_SYS_ADMIN 权限' >&2; exit 1; }
+  [[ "$(id -u)" -eq 0 ]] || { echo 'NAS 工具箱需要 root/CAP_SYS_ADMIN 权限' >&2; exit 1; }
   mkdir -p "$PKGVAR/private"
   chmod 700 "$PKGVAR/private"
-  if running; then echo "挂载管家已运行";exit 0;fi
+  if running; then echo "NAS 工具箱已运行";exit 0;fi
   rm -f "$PIDFILE" "$SOCKET"
   "$BIN" --socket "$SOCKET" --state "$STATE" >> "$PKGVAR/service.log" 2>&1 &
   echo "$!" > "$PIDFILE"
   chmod 600 "$PIDFILE" "$PKGVAR/service.log"
   for i in $(seq 1 50);do
-    if running && [[ -S "$SOCKET" ]];then echo "挂载管家已启动";exit 0;fi
+    if running && [[ -S "$SOCKET" ]];then echo "NAS 工具箱已启动";exit 0;fi
     sleep 0.2
   done
   echo "服务启动失败，日志: $PKGVAR/service.log" >&2
@@ -44,8 +44,8 @@ case "${1:-}" in
   rm -f "$PIDFILE" "$SOCKET"
   ;;
  status)
-  if running && [[ -S "$SOCKET" ]];then echo "挂载管家运行中";exit 0;fi
-  echo "挂载管家未运行";exit 1
+  if running && [[ -S "$SOCKET" ]];then echo "NAS 工具箱运行中";exit 0;fi
+  echo "NAS 工具箱未运行";exit 1
   ;;
  *) echo "Usage: $0 start|stop|status" >&2;exit 2;;
 esac
