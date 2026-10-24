@@ -6,7 +6,7 @@ A community fnOS NAS application combining **Directory Mapping** (previously Mou
 
 **Repository renamed to [codercaizh/fnos-toolbox](https://github.com/codercaizh/fnos-toolbox). The fnOS app ID and internal Go module path remain `fnos-mount-manager` for backward compatibility.**
 
-**Current version: v2.0.6** · ARM64 / x86-64 · fnOS 1.2.0604 or later · Requires root/CAP_SYS_ADMIN for bind mounts · Not an official fnOS product.
+**Current version: v2.0.7** · ARM64 / x86-64 · fnOS 1.2.0604 or later · Requires root/CAP_SYS_ADMIN for bind mounts · Not an official fnOS product.
 
 ## What it does
 
@@ -29,8 +29,10 @@ Example: separate remote Dad and Mom photo sources may be mapped to /vol1/1000/�
 - **Strict mode:** checksums for change detection followed by a full source/destination content read verification. This is much slower and consumes additional I/O.
 - Live bytes, percentage, transfer speed, ETA in h/m/s, active file transfers, current file names, and count of transferred or skipped files.
 - Pause/resume, manual retry and persisted task records. An interrupted single file may need to be copied again; file-level skip/resume **is not guaranteed byte-range resumption**.
-- Concurrent independent source items share a total concurrency budget. Up to eight independent files can be copied concurrently with concurrency 8; one source file normally uses one transfer.
+- **One shared rclone copy process per task:** selected folders and standalone files, even on different mounted shares, are exposed under a temporary virtual source. All files share the configured transfer budget, without fixed per-source allocation. In strict mode a separate rclone check starts sequentially after the copy completes (never concurrently). A single individual file can still use fewer active transfer slots.
 - **Recent Transfers:** retain the latest **three completed records** (active, paused and failed jobs remain available). Expand a record to see individual source and destination paths.
+
+Directory basenames containing `=` or newlines cannot be mapped by rclone combine; the app rejects those cases rather than writing to the wrong destination. Temporary configuration and selected-file symlinks are created under the private application directory and removed after each run; no file bytes are staged. A paused run rechecks incomplete sources with the selected validation policy.
 
 Copy does **not** delete source files and does **not** use rclone sync; an existing destination file may be overwritten if its validation fails. Test on disposable files first.
 
@@ -92,7 +94,7 @@ bash scripts/build.sh
 python3 scripts/verify-fpk.py
 ~~~
 
-The build produces **dist/nas-toolbox-2.0.6-arm64.fpk** and **dist/nas-toolbox-2.0.6-x86_64.fpk**, plus checksums. The CI workflow runs Go unit tests, the race detector, vet, Playwright UI mocks, and both architectures' package verification.
+The build produces **dist/nas-toolbox-2.0.7-arm64.fpk** and **dist/nas-toolbox-2.0.7-x86_64.fpk**, plus checksums. The CI workflow runs Go unit tests, the race detector, vet, Playwright UI mocks, and both architectures' package verification.
 
 CI uses **mocked fnOS gateway/picker and mount syscalls**; it is not evidence of successful installation, SMB reconnection, or backup/restore on physical hardware. Follow the [hardware validation matrix](docs/TESTING.md) before production use.
 

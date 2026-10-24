@@ -54,7 +54,7 @@ with open(trace,'a+') as f:
  s['calls'].append(sys.argv[1:])
  f.seek(0); f.truncate(); json.dump(s,f); f.flush()
  fcntl.flock(f,fcntl.LOCK_UN)
-sys.stderr.write(json.dumps({'level':'notice','stats':{'bytes':3,'speed':1048576,'transferring':[{'name':Path(sys.argv[2]).name,'speedAvg':1048576}]}})+'\n')
+sys.stderr.write(json.dumps({'level':'notice','stats':{'bytes':3,'speed':1048576,'transferring':[{'name':'file-%s'%i,'speedAvg':1048576} for i in range(8)]}})+'\n')
 sys.stderr.flush()
 time.sleep(1.5)
 with open(trace,'r+') as f:
@@ -117,18 +117,18 @@ with open(trace,'r+') as f:
 	if err = json.Unmarshal(b, &record); err != nil {
 		t.Fatal(err)
 	}
-	if record.Max != 8 {
-		t.Errorf("maximum simultaneous subprocesses=%d, want 8", record.Max)
+	if record.Max != 1 {
+		t.Errorf("maximum simultaneous subprocesses=%d, want 1", record.Max)
 	}
 	if seen != 8 {
 		t.Errorf("UI active-transfer metrics only observed %d, want 8", seen)
 	}
-	if len(record.Calls) != 8 {
-		t.Fatalf("rclone processes=%d, want 8", len(record.Calls))
+	if len(record.Calls) != 1 {
+		t.Fatalf("rclone processes=%d, want 1", len(record.Calls))
 	}
 	for _, args := range record.Calls {
 		joined := strings.Join(args, " ")
-		if !strings.Contains(joined, "--transfers=1") {
+		if !strings.Contains(joined, "--transfers=8") {
 			t.Errorf("worker parallel budget violated: %s", joined)
 		}
 	}

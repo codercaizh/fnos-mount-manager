@@ -1,5 +1,5 @@
 appname="fnos-mount-manager"
-version="2.0.6"
+version="2.0.7"
 display_name="NAS 工具箱"
 desc="合并目录映射和 rclone 文件复制，单服务、共用任务存储。"
 maintainer="Community"

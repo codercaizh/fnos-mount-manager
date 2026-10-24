@@ -177,6 +177,11 @@ func validateInputs(src []string, target string, cores int, verify string) ([]En
 		}
 		paths[p] = true
 		name := filepath.Base(p)
+		// combine cannot safely represent '=' in a directory alias or line
+		// breaks in a directory mapping. Reject at task creation, before scan.
+		if info.IsDir() && (strings.Contains(name, "=") || strings.ContainsAny(p, "\r\n")) {
+			return nil, fmt.Errorf("目录名或路径含 rclone combine 不支持的字符：%s", p)
+		}
 		if names[name] {
 			return nil, fmt.Errorf("不同来源同名：%s，请分开创建任务", name)
 		}
@@ -497,97 +502,9 @@ func max64(a, b int64) int64 {
 	return b
 }
 
-// activeFileSample aggregates multiple independent rclone processes into
-// one bounded-progress view. Each task's concurrency is divided into worker
-// capacities so the total --transfers never exceeds the requested limit.
-type transferProgress struct {
-	mu        sync.Mutex
-	parts     map[int]rcStats
-	entries   []Entry
-	tick      time.Time
-	lastBytes int64
-	speed     float64
-}
-
-func newTransferProgress(entries []Entry) *transferProgress {
-	return &transferProgress{parts: make(map[int]rcStats), entries: entries, tick: time.Now()}
-}
-func (p *transferProgress) record(m *Manager, id string, i int, stats *rcStats) {
-	p.mu.Lock()
-	if stats == nil {
-		delete(p.parts, i)
-	} else {
-		p.parts[i] = *stats
-	}
-	var bytes int64
-	var currentDoneFiles int64
-	active := 0
-	names := make([]string, 0, 12)
-	for idx, stat := range p.parts {
-		bytes += stat.Bytes
-		// In rclone's JSON stats, checks are skipped/up-to-date files and
-		// transfers are successfully transferred files. Both are finished
-		// files, unlike the 'transferring' entries which are still in flight.
-		finished := stat.Checks + stat.Transfers
-		if finished < 0 {
-			finished = 0
-		}
-		if finished > p.entries[idx].Files {
-			finished = p.entries[idx].Files
-		}
-		currentDoneFiles += finished
-		active += len(stat.Transferring)
-		for _, file := range stat.Transferring {
-			if len(names) >= 12 {
-				break
-			}
-			display := p.entries[idx].Name
-			if p.entries[idx].Dir && file.Name != "" {
-				display += "/" + file.Name
-			}
-			names = append(names, display)
-		}
-	}
-	now := time.Now()
-	if elapsed := now.Sub(p.tick).Seconds(); elapsed >= 0.6 {
-		delta := bytes - p.lastBytes
-		if delta >= 0 {
-			instant := float64(delta) / elapsed
-			if instant > 0 {
-				if p.speed <= 0 {
-					p.speed = instant
-				} else {
-					p.speed = p.speed*.35 + instant*.65
-				}
-			}
-		}
-		p.tick = now
-		p.lastBytes = bytes
-	}
-	speed := p.speed
-	p.mu.Unlock()
-	m.mutate(id, func(j *Job) {
-		j.CurrentBytes = bytes
-		j.CurrentDoneFiles = currentDoneFiles
-		j.ActiveTransfers = active
-		j.CurrentFiles = names
-		if len(names) > 0 {
-			j.CurrentFile = names[0]
-		} else {
-			j.CurrentFile = ""
-		}
-		j.Speed = speed
-		if speed > 0 {
-			j.ETA = int64(float64(max64(j.TotalBytes-j.DoneBytes-bytes, 0)) / speed)
-		} else {
-			j.ETA = -1
-		}
-	})
-}
-
-// transferConcurrent distributes the parallelism budget across independent
-// sources. One selected folder gets all slots, while separate selected files
-// can run concurrently. A job stays resumable via per-item completion flags.
+// transferConcurrent now runs one rclone copy for all remaining sources.
+// Existing per-source completion checkpoints are honored on resume; a partial
+// composite run is safely rechecked by rclone on the next attempt.
 func (m *Manager) transferConcurrent(ctx context.Context, id string, entries []Entry, step, parallel int, verify string) error {
 	m.mu.Lock()
 	j := m.lookup(id)
@@ -595,7 +512,7 @@ func (m *Manager) transferConcurrent(ctx context.Context, id string, entries []E
 		m.mu.Unlock()
 		return errors.New("任务不存在")
 	}
-	// Older task records used only the sequential Step checkpoint.
+	// Older records stored only the sequential Step checkpoint.
 	anyCompleted := false
 	for _, it := range j.Items {
 		if it.Completed {
@@ -608,21 +525,25 @@ func (m *Manager) transferConcurrent(ctx context.Context, id string, entries []E
 			j.Items[i].Completed = true
 		}
 	}
-	// Reconstruct completed counters from durable per-source checkpoints.
 	j.DoneBytes, j.DoneFiles = 0, 0
-	for _, it := range j.Items {
+	var todo []Entry
+	var pendingIndices []int
+	var pendingFiles int64
+	for idx, it := range j.Items {
 		if it.Completed {
 			j.DoneBytes += it.Bytes
 			j.DoneFiles += it.Files
+		} else {
+			todo = append(todo, it)
+			pendingIndices = append(pendingIndices, idx)
+			pendingFiles += it.Files
 		}
 	}
-	_ = m.saveLocked()
-	todo := make([]int, 0, len(entries))
-	for i, it := range j.Items {
-		if !it.Completed {
-			todo = append(todo, i)
-		}
+	if err := m.saveLocked(); err != nil {
+		m.mu.Unlock()
+		return err
 	}
+	target := j.Target
 	m.mu.Unlock()
 	if len(todo) == 0 {
 		return nil
@@ -630,90 +551,105 @@ func (m *Manager) transferConcurrent(ctx context.Context, id string, entries []E
 	if parallel < 1 {
 		parallel = 1
 	}
-	workers := minInt(len(todo), parallel)
-	progress := newTransferProgress(entries)
-	workCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	queue := make(chan int, len(todo))
-	for _, i := range todo {
-		queue <- i
-	}
-	close(queue)
-	var wg sync.WaitGroup
-	var firstErr error
-	var errOnce sync.Once
-	for worker := 0; worker < workers; worker++ {
-		capacity := parallel / workers
-		if worker < parallel%workers {
-			capacity++
+	// Validate all sources and target types again before exposing them to rclone.
+	for _, it := range todo {
+		if _, err := validateInputs([]string{it.Source}, filepath.Dir(it.Dest), parallel, verify); err != nil {
+			return err
 		}
-		wg.Add(1)
-		go func(slots int) {
-			defer wg.Done()
-			for idx := range queue {
-				if workCtx.Err() != nil {
-					return
-				}
-				it := entries[idx]
-				// Revalidate every source/target before starting any write.
-				if _, err := validateInputs([]string{it.Source}, filepath.Dir(it.Dest), parallel, verify); err != nil {
-					errOnce.Do(func() { firstErr = err; cancel() })
-					return
-				}
-				m.mutate(id, func(j *Job) { j.State = "running" })
-				opts := []string{"--stats=1s", "--stats-one-line", "--stats-log-level=NOTICE", "--use-json-log",
-					"--transfers=" + strconv.Itoa(slots), "--checkers=" + strconv.Itoa(slots),
-					"--retries=3", "--low-level-retries=10", "--multi-thread-streams=2"}
-				if verify == "content" {
-					opts = append(opts, "--checksum")
-				} else {
-					opts = append(opts, "--size-only")
-				}
-				var args []string
-				if it.Dir {
-					args = []string{"copy", it.Source, it.Dest}
-				} else {
-					args = []string{"copyto", it.Source, it.Dest}
-				}
-				args = append(args, opts...)
-				handler := func(st rcStats) { progress.record(m, id, idx, &st) }
-				err := m.runRcloneTracked(workCtx, id, handler, args...)
-				if err != nil {
-					errOnce.Do(func() { firstErr = err; cancel() })
-					return
-				}
-				m.mu.Lock()
-				if j := m.lookup(id); j != nil && !j.Items[idx].Completed {
-					j.Items[idx].Completed = true
-					j.DoneBytes += it.Bytes
-					j.DoneFiles += it.Files
-					for j.Step < len(j.Items) && j.Items[j.Step].Completed {
-						j.Step++
-					}
-					_ = m.saveLocked()
-				}
-				m.mu.Unlock()
-				progress.record(m, id, idx, nil)
-			}
-		}(capacity)
 	}
-	wg.Wait()
-	if ctx.Err() != nil {
-		return ctx.Err()
+	source, err := makeCombinedSource(todo, m.stateFile)
+	if err != nil {
+		return err
 	}
-	if firstErr != nil {
-		return firstErr
+	defer source.clean()
+	args := []string{"copy", source.remote, target, "--config=" + source.config,
+		"--stats=1s", "--stats-one-line", "--stats-log-level=NOTICE", "--use-json-log",
+		"--transfers=" + strconv.Itoa(parallel), "--checkers=" + strconv.Itoa(parallel),
+		"--retries=3", "--low-level-retries=10", "--multi-thread-streams=2",
+	}
+	if verify == "content" {
+		args = append(args, "--checksum")
+	} else {
+		args = append(args, "--size-only")
 	}
 	m.mutate(id, func(j *Job) {
+		j.State = "running"
 		j.CurrentBytes = 0
 		j.CurrentDoneFiles = 0
 		j.CurrentFiles = nil
 		j.ActiveTransfers = 0
 		j.Speed = 0
 		j.ETA = -1
-		j.CurrentFile = ""
 	})
-	return nil
+	tick := time.Now()
+	var lastBytes int64
+	var speed float64
+	onStats := func(stat rcStats) {
+		now := time.Now()
+		if elapsed := now.Sub(tick).Seconds(); elapsed > .15 {
+			delta := stat.Bytes - lastBytes
+			if delta > 0 {
+				instant := float64(delta) / elapsed
+				if speed > 0 {
+					speed = speed*.35 + instant*.65
+				} else {
+					speed = instant
+				}
+			} else if elapsed > 2 {
+				speed = 0
+			}
+			tick, lastBytes = now, stat.Bytes
+		}
+		done := completedFileCount(stat, pendingFiles)
+		m.mutate(id, func(j *Job) {
+			j.CurrentBytes = stat.Bytes
+			j.CurrentDoneFiles = done
+			j.ActiveTransfers = len(stat.Transferring)
+			j.CurrentFiles = j.CurrentFiles[:0]
+			for _, file := range stat.Transferring {
+				if len(j.CurrentFiles) == 12 {
+					break
+				}
+				j.CurrentFiles = append(j.CurrentFiles, file.Name)
+			}
+			j.CurrentFile = ""
+			if len(j.CurrentFiles) > 0 {
+				j.CurrentFile = j.CurrentFiles[0]
+			}
+			j.Speed = speed
+			if speed > 0 {
+				j.ETA = int64(float64(max64(j.TotalBytes-j.DoneBytes-stat.Bytes, 0)) / speed)
+			} else {
+				j.ETA = -1
+			}
+		})
+	}
+	if err := m.runRcloneTracked(ctx, id, onStats, args...); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if j := m.lookup(id); j != nil {
+		for _, idx := range pendingIndices {
+			if !j.Items[idx].Completed {
+				j.Items[idx].Completed = true
+				j.DoneBytes += j.Items[idx].Bytes
+				j.DoneFiles += j.Items[idx].Files
+			}
+		}
+		for j.Step < len(j.Items) && j.Items[j.Step].Completed {
+			j.Step++
+		}
+		j.CurrentBytes, j.CurrentDoneFiles, j.ActiveTransfers = 0, 0, 0
+		j.CurrentFiles = nil
+		j.CurrentFile = ""
+		j.Speed, j.ETA = 0, -1
+		err = m.saveLocked()
+	}
+	m.mu.Unlock()
+	return err
 }
 
 func (m *Manager) run(ctx context.Context, id string) {
@@ -775,50 +711,33 @@ func (m *Manager) run(ctx context.Context, id string) {
 	}
 
 	if verify == "content" {
+		// A second, sequential rclone *check* verifies the same merged namespace.
+		// There is never more than one rclone child process running at a time.
 		m.mutate(id, func(j *Job) {
 			j.State = "verifying"
 			j.CurrentFile = "正在逐块读取源和目标进行内容校验"
 			j.Speed = 0
 			j.ETA = -1
 		})
-		for _, it := range entries {
+		source, err := makeCombinedSource(entries, m.stateFile)
+		if err != nil {
+			m.end(id, "error", err)
+			return
+		}
+		defer source.clean()
+		args := []string{"check", source.remote, j.Target, "--config=" + source.config,
+			"--download", "--one-way", "--checkers=" + strconv.Itoa(parallel),
+			"--use-json-log", "--stats=1s", "--stats-one-line", "--stats-log-level=NOTICE"}
+		if err := m.runRclone(ctx, id, args...); err != nil {
 			if ctx.Err() != nil {
 				m.end(id, "paused", nil)
-				return
-			}
-			var src, dst string
-			args := []string{"check"}
-			if it.Dir {
-				src, dst = it.Source, it.Dest
 			} else {
-				src, dst = filepath.Dir(it.Source), filepath.Dir(it.Dest)
-				// Literal NUL-delimited names avoid interpreting glob metacharacters.
-				listFile, err := os.CreateTemp(filepath.Dir(m.stateFile), "verify-*.lst")
-				if err != nil {
-					m.end(id, "error", err)
-					return
-				}
-				_, err = listFile.Write(append([]byte(it.Name), 0))
-				_ = listFile.Close()
-				if err != nil {
-					_ = os.Remove(listFile.Name())
-					m.end(id, "error", err)
-					return
-				}
-				defer os.Remove(listFile.Name())
-				args = append(args, "--files-from0="+listFile.Name())
+				m.end(id, "error", fmt.Errorf("内容校验未通过：%w", err))
 			}
-			args = append(args, src, dst, "--download", "--one-way", "--checkers="+strconv.Itoa(parallel), "--use-json-log", "--stats=1s", "--stats-one-line", "--stats-log-level=NOTICE")
-			if err := m.runRclone(ctx, id, args...); err != nil {
-				if ctx.Err() != nil {
-					m.end(id, "paused", nil)
-				} else {
-					m.end(id, "error", fmt.Errorf("内容校验未通过：%w", err))
-				}
-				return
-			}
+			return
 		}
 	}
+
 	m.end(id, "completed", nil)
 }
 func writeJSON(w http.ResponseWriter, status int, v any) {

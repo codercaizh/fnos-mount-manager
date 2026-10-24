@@ -33,8 +33,9 @@ python3 scripts/verify-fpk.py
 | Web 安全 | 网关 Origin 与内部 Host 不一致、CSRF 自定义头、Content-Type 校验 | api_security_test.go |
 | 复制路由兼容 | 标准 /api/copy/pause 与旧 /api/pause 都有明确 JSON 响应，缺少专有标识时拒绝兼容路由 | copy_pause_compat_test.go |
 | 任务历史 | 仅导入旧版最近 3 条完成记录、避免重复导入、保留私有记录 | internal/copyengine/engine_test.go |
-| 实时文件进度 | rclone 的 checks + transfers 计数、跨来源聚合、重复样本幂等与边界检查 | realtime_files_test.go |
-| 多来源并行 | 8 个独立文件最多同时运行 8 个工作位，单来源状态正确持久化 | concurrent_integration_test.go（受环境限制） |
+| 实时文件进度 | rclone 的 checks + transfers 累计计数、统计上限和 JSON 数据格式 | realtime_files_test.go |
+| 多来源并行 | 8 个独立文件只启动 1 个 rclone copy 子进程并传入 --transfers=8，任务状态正确持久化 | concurrent_integration_test.go（受环境限制） |
+| 单进程复合来源 | combine/union 映射目录+独立文件、中文/引号/空格路径、禁止跟随目录内的链接、增量、严格校验和任务重载 | combined_test.go、combined_manager_integration_test.go（真实 rclone 可选） |
 | 目录映射 UI | 官方选择器回调、远程别名、移动端布局、创建和修改交互 | scripts/ui-smoke.cjs |
 | 合并 UI | 目录映射/复制切换、最近记录展开后来源/目标路径、来源选择与创建参数 | scripts/ui-toolbox-smoke.cjs |
 | 复制手机 UI | 活动文件列表、已完成文件数、长路径、320/360/375/390/412/430px 宽度无横向溢出 | scripts/ui-copy-overflow-smoke.cjs |
@@ -45,6 +46,8 @@ python3 scripts/verify-fpk.py
 ~~~bash
 RUN_FNOS_PARALLEL_INTEGRATION=1 go test ./internal/copyengine -run TestEightIndependentFilesAreCopiedConcurrently -count=1 -v
 ~~~
+
+真实 rclone 冒烟测试：`RCLONE_TEST_BIN=/path/to/rclone go test ./internal/copyengine -run TestCombinedSourceRealRclone -v`；在测试服务器上也可运行 `TestRealCombinedJobAndIncrementalRestart` 端到端测试。
 
 此测试只在测试共享根目录下创建/清理临时文件，使用可观测并发的模拟 rclone 可执行文件，不会连接外部 SMB。**生产设备不需要也不建议运行**。
 
