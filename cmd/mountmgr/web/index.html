@@ -27,12 +27,14 @@
           <div class="tile-copy"><span>来源目录</span><strong id="source-label">选择文件夹</strong></div>
           <span class="chevron" data-icon="chevron"></span>
         </button>
+        <div class="tile-actions"><button type="button" id="pick-remote-root" class="text-action"><span data-icon="link"></span> 整个 SMB 共享</button></div>
         <div class="transfer-icon" data-icon="arrowdown"></div>
         <button type="button" id="pick-target" class="path-tile" aria-label="选择本地父目录">
           <div class="tile-icon local-icon" data-icon="folder"></div>
           <div class="tile-copy"><span>本地目录</span><strong id="target-label">选择文件夹</strong></div>
           <span class="chevron" data-icon="chevron"></span>
         </button>
+        <div class="tile-actions"><button type="button" id="mkdir-target" class="text-action"><span data-icon="plus"></span> 新建文件夹</button></div>
       </div>
       <div class="fields">
         <label class="name-label"><span>映射名称</span><input id="alias" maxlength="140" placeholder="例如：爸爸相册" autocomplete="off"></label>
@@ -46,6 +48,17 @@
     </section>
     <p class="foot">每分钟自动检测并恢复挂载 · 不修改原版备份应用</p>
   </main>
+</div>
+<div id="extra-dialog" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+  <div class="dialog-card">
+    <div class="dialog-heading"><h3 id="dialog-title"></h3><button id="dialog-close" type="button" class="dialog-close" aria-label="关闭">×</button></div>
+    <p id="dialog-description" class="dialog-description"></p>
+    <div id="dialog-content" class="dialog-content"></div>
+    <div id="dialog-actions" class="dialog-actions hidden">
+      <button id="dialog-cancel" type="button" class="secondary">取消</button>
+      <button id="dialog-confirm" type="button" class="confirm-btn">新建</button>
+    </div>
+  </div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <script type="module" src="app.js"></script>

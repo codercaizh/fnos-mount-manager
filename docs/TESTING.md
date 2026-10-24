@@ -59,3 +59,12 @@ The `scripts/build.sh` command cross-compiles both ARM64 and x86_64 binaries and
 - No actual SMB network fault injection is run during CI.
 - Root capability and startup service behavior depend on fnOS firmware policy; CI cannot certify a particular NAS version.
 - No write workload is performed on production shares.
+
+## v1.2.0 / Whole-share roots and directory creation
+
+- Unit tests verify remote SMB/CIFS root selection using mountinfo, including empty shares with no nested directories; non-SMB filesystems and nested mount entries are filtered out.
+- Unit tests cover the folder-create path/name policy, actual creation in a temporary directory, duplicate-directory rejection, symlinked parents and managed-alias protection.
+- The Playwright test exercises selecting the root of an **empty** remote share from the new dialog and then creating a local folder through the application fallback. The subsequent mapping creation must use the correct new paths.
+- Native SDK picker `creatable: true` is host-dependent; the standalone route flow has a separate application fallback. A real fnOS desktop/mobile host still needs manual confirmation that the native creation option appears and works.
+
+Verify against a disposable SMB share before production use. This project never overwrites or unmounts an arbitrary foreign mount as part of browser tests.

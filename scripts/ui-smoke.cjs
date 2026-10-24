@@ -14,6 +14,16 @@ const server=http.createServer(async(req,res)=>{
  if(pathname===base+'api/status'){
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({root:true,records:mockRecords,interval:'60 秒'}));return;
  }
+ if(pathname===base+'api/remote-shares'&&req.method==='GET'){
+  res.writeHead(200,{'Content-Type':'application/json'});
+  res.end(JSON.stringify({items:[{path:'/vol02/1000-0-test',name:'1000-0-test'},{path:'/vol02/1000-0-empty',name:'1000-0-empty'}]}));return;
+ }
+ if(pathname===base+'api/mkdir'&&req.method==='POST'){
+  let body='';for await(const chunk of req)body+=chunk;
+  const input=JSON.parse(body);requests.push({path:pathname,headers:req.headers,body:input});
+  res.writeHead(201,{'Content-Type':'application/json'});
+  res.end(JSON.stringify({path:input.parent+'/'+input.name}));return;
+ }
  if(pathname===base+'api/create'&&req.method==='POST'){
   let body='';for await(const chunk of req)body+=chunk;
   const input=JSON.parse(body);
@@ -52,25 +62,38 @@ async function run(){
   assert(src.searchParams.get('sidebarGroup').split(',').includes('remote'));
   await sendPicker(page,src,'/vol02/1000-0-test/Photos');
   await page.locator('#source-label').getByText('/vol02/1000-0-test/Photos').waitFor();
+  // A whole SMB share can be selected directly without selecting any subfolder,
+  // including a share with no subdirectories at all.
+  await page.locator('#pick-remote-root').click();
+  await page.locator('.share-item').nth(1).click();
+  await page.locator('#source-label').getByText('/vol02/1000-0-empty').waitFor();
   await page.locator('#pick-target').click();
   const dst=new URL(await page.evaluate(()=>window.__pickedURL));
   assert(!dst.searchParams.get('sidebarGroup').split(',').includes('remote'));
   await sendPicker(page,dst,'/vol1/1000/share');
+  // SDK route may not support folder creation on all fnOS hosts;
+  // application fallback must create a real local folder and select it.
+  await page.locator('#mkdir-target').click();
+  await page.locator('#mkdir-name').fill('新建目录');
+  await page.locator('#dialog-confirm').click();
+  await page.locator('#target-label').getByText('/vol1/1000/share/新建目录').waitFor();
+  assert.equal(requests[0].path,base+'api/mkdir');
+  assert.deepEqual(requests[0].body,{parent:'/vol1/1000/share',name:'新建目录'});
   await page.locator('#alias').fill('爸爸相册');
   await page.getByRole('button',{name:'读写'}).click();
-  assert.equal(await page.locator('#preview').innerText(),'/vol1/1000/share/爸爸相册');
+  assert.equal(await page.locator('#preview').innerText(),'/vol1/1000/share/新建目录/爸爸相册');
   await page.locator('#create').click();
   await page.locator('.record-title strong').getByText('爸爸相册').waitFor();
-  assert.equal(requests.length,1);
-  assert.deepEqual(requests[0].body,{source:'/vol02/1000-0-test/Photos',parent:'/vol1/1000/share',name:'爸爸相册',mode:'rw'});
-  assert.equal(requests[0].headers['x-fnos-mount-ui'],'1');
+  assert.equal(requests.length,2);
+  assert.deepEqual(requests[1].body,{source:'/vol02/1000-0-empty',parent:'/vol1/1000/share/新建目录',name:'爸爸相册',mode:'rw'});
+  assert.equal(requests[1].headers['x-fnos-mount-ui'],'1');
   if(errors.length)throw Error('Browser errors: '+errors.join(';'));
   if(process.env.CAPTURE_SCREENSHOT==='1'){
-    const screenshot=path.join(root,'dist','ui-mobile-v1.1.2.png');
+    const screenshot=path.join(root,'dist','ui-mobile-v1.2.0.png');
     fs.mkdirSync(path.dirname(screenshot),{recursive:true});
     await page.screenshot({path:screenshot,fullPage:true});
   }
-  console.log('UI SMOKE PASSED: mobile layout, native source/target picker, callback, Chinese path, mode, create JSON, record rendering');
+  console.log('UI SMOKE PASSED: whole SMB share root, empty share, native folder picker, mkdir fallback, Chinese paths, create request, mobile layout');
  }finally{
   if(browser)await browser.close();
   await new Promise(ok=>server.close(ok));

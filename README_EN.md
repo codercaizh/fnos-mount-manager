@@ -6,7 +6,7 @@ A lightweight folder-alias manager for **fnOS NAS**, powered by Linux bind mount
 
 ![Mobile user interface](docs/screenshot-mobile.png)
 
-> **v1.1.2** · ARM64 and x86_64 · fnOS ≥ 1.2.0604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
+> **v1.2.0** · ARM64 and x86_64 · fnOS ≥ 1.2.0604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
 
 ## The problem
 
@@ -82,7 +82,7 @@ chmod +x dist/fnpack-linux-amd64
 bash scripts/build.sh
 ```
 
-Outputs: `dist/fnos-mount-manager-1.1.2-arm64.fpk` and `dist/fnos-mount-manager-1.1.2-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
+Outputs: `dist/fnos-mount-manager-1.2.0-arm64.fpk` and `dist/fnos-mount-manager-1.2.0-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
 
 The official fnOS SDK is downloaded using a locked npm dependency (`@trimjs/web-app@0.5.0`); its minified distribution is **not committed as original project source**.
 
@@ -106,3 +106,17 @@ Persistent state: `TRIM_PKGVAR/private/mounts.json` (atomic update, file mode `0
 ## License and disclaimer
 
 Original project code is licensed under [MIT](LICENSE). fnOS, its SDK, and fnpack belong to their respective maintainers; see [third-party attributions](docs/THIRD_PARTY.md). **This is an independent community project, not an official fnOS application.** Include an fnOS version, CPU architecture and sanitized logs when reporting issues.
+
+## v1.2.0: whole SMB share roots and creating destination folders
+
+### Mount an entire SMB share
+
+Click **Entire SMB share** below the source picker to select one of the active CIFS/SMB3 mount **roots**, for example `/vol02/1000-0-cef8fa37`. This works even when a share has no subdirectories. It uses the actual kernel mount list, so disconnected shares will not appear. The original native picker continues to support selecting specific nested folders.
+
+### Create folders while choosing the destination
+
+- **Native fnOS host:** the destination `pickFile` request now includes `directory: true, creatable: true`, enabling the host's folder-creation UI where the host supports it.
+- **Standalone App Auth flow:** the SDK does not guarantee `creatable` is honored for route-based pickers. Use the new **New folder** action under the destination picker, select an existing local parent first, then create one child folder. The created child is automatically selected.
+- The created folder becomes the **destination parent**; still provide a separate mapping alias name. For example: parent `/vol1/1000/share`, new folder `Backups`, alias `Photos` gives `/vol1/1000/share/Backups/Photos`.
+
+The create-folder API rejects non-local destinations, invalid names, symlinks and paths inside existing managed aliases. It never deletes existing content.

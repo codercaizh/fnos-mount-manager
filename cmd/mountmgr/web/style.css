@@ -39,3 +39,27 @@ main{display:flex;flex-direction:column;gap:18px}
 .toast{position:fixed;z-index:50;left:50%;bottom:24px;transform:translateX(-50%);padding:12px 16px;background:#28354a;border-radius:11px;color:#fff;box-shadow:0 14px 35px #18283d38;font-size:12px;max-width:calc(100vw - 30px);line-height:1.6;text-align:center}
 .hidden{display:none!important}
 @media (max-width:600px){.app{padding:0 15px 22px}.topbar{padding:22px 4px 20px}.brand-icon{width:43px;height:43px}.brand h1{font-size:19px}.section{border-radius:17px;padding:19px 15px}.section-header{margin-bottom:17px}.fields{grid-template-columns:1fr;gap:14px}.record{padding:13px 11px;gap:9px}.record-actions{gap:0}.action{width:29px;height:32px}.list-icon{width:38px;height:38px}.record-path{font-size:11px}.record-title strong{max-width:170px}.tile-copy strong{font-size:12px}}
+
+/* Remote mount roots and local-folder creation */
+.tile-actions{display:flex;justify-content:flex-end;padding:5px 1px 0}
+.text-action{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0;color:#317ef5;font-size:12px;font-weight:650;padding:7px 6px;border-radius:8px}
+.text-action:hover{background:#edf5ff}
+.text-action svg{height:16px;width:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.overlay{position:fixed;inset:0;z-index:35;background:rgba(22,33,52,.48);display:flex;align-items:center;justify-content:center;padding:18px}
+.dialog-card{background:#fff;color:#26364a;width:min(490px,100%);max-height:80vh;display:flex;flex-direction:column;border-radius:18px;padding:22px;box-shadow:0 20px 65px #1b305833}
+.dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.dialog-heading h3{font-size:17px;margin:0}
+.dialog-close{background:transparent;border:0;font-size:25px;line-height:1;color:#8290a4;padding:4px}
+.dialog-description{font-size:12px;color:#7d8da4;line-height:1.6;overflow-wrap:anywhere}
+.dialog-content{overflow-y:auto;min-height:50px;padding:5px 0;display:flex;flex-direction:column;gap:8px}
+.share-item{display:flex;flex-direction:column;text-align:left;gap:6px;padding:13px;border:1px solid #e5ecf7;border-radius:11px;background:#f9fbff;color:#253d5e;word-break:break-all}
+.share-item:hover{border-color:#8fb6f7;background:#edf5ff}
+.share-item strong{font-size:13px}
+.share-item small{font-size:11px;color:#8295ac}
+.mkdir-input{height:46px;min-width:0;width:100%;padding:0 12px;border:1px solid #d5dfef;border-radius:10px;outline:0;font-size:14px;background:white;color:#23364f}
+.mkdir-input:focus{border-color:#317ef5}
+.dialog-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.secondary,.confirm-btn{padding:10px 18px;border-radius:9px;font-weight:650;border:0}
+.secondary{background:#f0f3f8;color:#66778f}
+.confirm-btn{background:#317ef5;color:#fff}
+@media(max-width:600px){.dialog-card{padding:18px}.overlay{align-items:center}}

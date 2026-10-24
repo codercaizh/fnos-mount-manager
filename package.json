@@ -1,6 +1,6 @@
 {
   "name": "fnos-mount-manager",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "private": true,
   "description": "fnOS bind-mount manager and its reproducible test/build toolchain",
   "scripts": {
@@ -9,6 +9,11 @@
     "test:syntax": "node --check cmd/mountmgr/web/app.js && node --check cmd/mountmgr/web/fnos-sdk.js",
     "icons": "node scripts/render-icons.cjs"
   },
-  "dependencies": {"@trimjs/web-app": "0.5.0"},
-  "devDependencies": {"@resvg/resvg-js": "2.6.2", "playwright": "1.64.1"}
+  "dependencies": {
+    "@trimjs/web-app": "0.5.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "playwright": "1.64.1"
+  }
 }

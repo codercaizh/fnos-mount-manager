@@ -18,6 +18,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -152,6 +153,61 @@ func getMount(ms []MountInfo, p string) (MountInfo, bool) {
 	}
 	return MountInfo{}, false
 }
+
+// RemoteShare represents an actual SMB/CIFS mount root, not an arbitrary subfolder.
+type RemoteShare struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+// remoteSharesFromMounts is pure for reproducible tests.
+func remoteSharesFromMounts(ms []MountInfo) []RemoteShare {
+	roots := make(map[string]RemoteShare)
+	for _, m := range ms {
+		parts := pieces(m.Point)
+		if len(parts) != 2 || !remotePath(m.Point) {
+			continue
+		}
+		if m.FSType != "cifs" && m.FSType != "smb3" {
+			continue
+		}
+		roots[m.Point] = RemoteShare{Path: m.Point, Name: parts[1]}
+	}
+	out := make([]RemoteShare, 0, len(roots))
+	for _, r := range roots {
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+func localMkdirPath(parent, name string) (string, error) {
+	cleaned, err := cleanAbsolute(parent)
+	if err != nil || !localPath(cleaned, true) {
+		return "", errors.New("只能在飞牛本地共享目录下新建文件夹")
+	}
+	if err := strictName(name); err != nil {
+		return "", err
+	}
+	return filepath.Join(cleaned, name), nil
+}
+
+var errFolderInsideAlias = errors.New("不允许在映射目录中创建子目录")
+var errFolderParentUnavailable = errors.New("目标父目录不可用")
+
+// createLocalFolder creates exactly one child directory, never in an alias.
+func createLocalFolder(parent, target string, records []*Record) error {
+	if err := checkNoSymlink(parent); err != nil {
+		return fmt.Errorf("%w: %v", errFolderParentUnavailable, err)
+	}
+	for _, record := range records {
+		if parent == record.Target || strings.HasPrefix(parent, record.Target+"/") {
+			return errFolderInsideAlias
+		}
+	}
+	return os.Mkdir(target, 0755)
+}
+
 func remoteReady(p string, ms []MountInfo) bool {
 	if !remotePath(p) {
 		return true
@@ -397,6 +453,47 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if strings.HasPrefix(path, base) {
 		path = "/" + strings.TrimPrefix(path, base)
+	}
+	if path == "/api/remote-shares" && r.Method == "GET" {
+		ms, err := mounts()
+		if err != nil {
+			fail(w, 500, "无法读取当前挂载信息")
+			return
+		}
+		response(w, 200, map[string]any{"items": remoteSharesFromMounts(ms)})
+		return
+	}
+	if path == "/api/mkdir" && r.Method == "POST" {
+		var in struct{ Parent, Name string }
+		if !readJSON(w, r, &in) {
+			return
+		}
+		target, err := localMkdirPath(in.Parent, in.Name)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		parent := filepath.Dir(target)
+		s.Lock()
+		defer s.Unlock()
+		if err := createLocalFolder(parent, target, s.Records); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				fail(w, 409, "同名目录已经存在")
+				return
+			}
+			if errors.Is(err, errFolderInsideAlias) {
+				fail(w, 409, err.Error())
+				return
+			}
+			if errors.Is(err, errFolderParentUnavailable) {
+				fail(w, 400, err.Error())
+				return
+			}
+			fail(w, 500, "创建文件夹失败: "+err.Error())
+			return
+		}
+		response(w, 201, map[string]string{"path": target})
+		return
 	}
 	if path == "/api/status" && r.Method == "GET" {
 		s.Lock()

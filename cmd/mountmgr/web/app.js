@@ -144,13 +144,13 @@ async function chooseFolder(side){
    const state=crypto.randomUUID();
    pendingPicker={state,side};
    await app.openAppAuth('pickFile',{
-     appName:'fnos-mount-manager',directory:true,sidebarGroup,
+     appName:'fnos-mount-manager',directory:true,creatable:side==='target',sidebarGroup,
      redirectUri:'/app/fnos-mount-manager/auth-callback.html',state,
    },{target:'_blank',features:'width=860,height=690'});
    return;
   }
   const result=await app.pickFile({
-   directory:true,creatable:false,sidebarGroup,
+   directory:true,creatable:side==='target',sidebarGroup,
    title:side==='source'?'选择来源文件夹':'选择本地父目录',
    okText:'选择目录'
   });
@@ -158,6 +158,61 @@ async function chooseFolder(side){
  }catch(e){notify('系统目录选择器无法使用：'+(e.message||String(e)));}
  finally{button.disabled=false;}
 }
+function showExtraDialog(title,description,hasActions){
+ $('dialog-title').textContent=title;
+ $('dialog-description').textContent=description;
+ $('dialog-content').replaceChildren();
+ $('dialog-actions').classList.toggle('hidden',!hasActions);
+ $('extra-dialog').classList.remove('hidden');
+}
+function hideExtraDialog(){ $('extra-dialog').classList.add('hidden'); }
+$('dialog-close').addEventListener('click',hideExtraDialog);
+$('dialog-cancel').addEventListener('click',hideExtraDialog);
+$('extra-dialog').addEventListener('click',e=>{if(e.target===$('extra-dialog'))hideExtraDialog();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hideExtraDialog();});
+
+$('pick-remote-root').addEventListener('click',async()=>{
+ const trigger=$('pick-remote-root');trigger.disabled=true;
+ showExtraDialog('选择整个 SMB 共享','直接选择已挂载的共享根目录，无需进入子文件夹。',false);
+ $('dialog-content').append(node('div','empty','正在读取远程挂载…'));
+ try{
+  const response=await api('api/remote-shares');
+  const list=$('dialog-content');list.replaceChildren();
+  if(!response.items?.length){list.append(node('p','empty','没有已连接的 SMB 共享，请先使用 fnOS「远程挂载」连接。'));return;}
+  for(const share of response.items){
+   const button=node('button','share-item');
+   button.type='button';
+   const label=node('strong','',share.name),path=node('small','',share.path);
+   button.append(label,path);
+   button.addEventListener('click',()=>{updateSelected('source',share.path);hideExtraDialog();});
+   list.append(button);
+  }
+ }catch(e){$('dialog-content').replaceChildren(node('p','empty',e.message));}
+ finally{trigger.disabled=false;}
+});
+$('mkdir-target').addEventListener('click',()=>{
+ const parent=$('pick-target').dataset.path;
+ if(!parent){notify('请先选择一个本地目录');return;}
+ showExtraDialog('新建文件夹','在 '+parent+' 下新建子文件夹，并将它设为目标父目录。',true);
+ const input=node('input','mkdir-input');
+ input.id='mkdir-name';input.maxLength=140;input.placeholder='新文件夹名称';
+ input.setAttribute('aria-label','新文件夹名称');
+ $('dialog-content').append(input);
+ $('dialog-confirm').onclick=async()=>{
+  const name=input.value.trim();
+  if(!name){notify('请输入文件夹名称');input.focus();return;}
+  const submit=$('dialog-confirm');submit.disabled=true;
+  try{
+   const output=await action('api/mkdir',{parent,name});
+   updateSelected('target',output.path);
+   hideExtraDialog();notify('新文件夹已创建并选中');
+  }catch(e){notify(e.message);}
+  finally{submit.disabled=false;}
+ };
+ input.addEventListener('keydown',e=>{if(e.key==='Enter'){$('dialog-confirm').click();}});
+ input.focus();
+});
+
 $('pick-source').addEventListener('click',()=>chooseFolder('source'));
 $('pick-target').addEventListener('click',()=>chooseFolder('target'));
 $('info-btn').addEventListener('click',()=>notify('把远程挂载目录映射到本地共享目录，支持自动恢复'));
