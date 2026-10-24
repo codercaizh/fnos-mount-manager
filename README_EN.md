@@ -131,3 +131,11 @@ On some fnOS versions, third-party API-scope calls for mount aliases return no d
 **The preferred metadata source is now a read-only lookup of `/etc/mountmgr/mount_info.json`** when running as an authorized privileged app. Only `mountPoint`, `comment`, `userName`, and `address` are decoded, and records are matched by exact mount point. The UI uses File Manager's two-line convention: **custom alias** above `username@server`.
 
 No system configuration is changed. Credential fields (including SMB passwords) are never passed to the web UI or written to logs. If the configuration is absent or inaccessible, the app still attempts the fnOS API and semantic-path fallbacks before showing SMB share/server. Native NAS firmware validation remains required.
+
+## v1.2.4: fix nested fnOS mount metadata parsing
+
+The v1.2.3 read-only configuration reader handled flat maps and arrays but missed the **user-ID → mount-ID → connection record** nested JSON layout used by fnOS. It silently skipped records and fell back to underlying SMB share names even when the file was readable.
+
+This release walks nested objects and arrays up to a bounded depth, recognizes leaves by their `mountPoint` and `comment` fields, and projects only the display allowlist. Records are matched to live mounts by exact mount point. The system file is never modified and stored credentials are never logged or returned.
+
+Regression tests reproduce the two-level layout and verify cross-user ordering, duplicate/share matching, non-mount-object filtering and depth limits. Evidence: [published fnOS mount manager JSON traversal](https://www.wangzipei.cn/archives/fei-niu-jiang-gua-zai-pan-gua-zai-dao-ben-di-mu-lu). Actual firmware integration remains a real NAS acceptance test.

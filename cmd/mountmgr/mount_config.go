@@ -6,91 +6,92 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
-// fnOS's own mount manager persists remote connection details here.
-// Read ONLY the named fields needed for labels: the original document may
-// contain SMB credentials. Never log, return, cache, or persist its contents.
-// This is a best-effort compatibility source for privileged fnOS installs.
+// fnOS stores mount aliases in a nested JSON object, commonly:
+// user-id -> mount-id -> {comment, mountPoint, userName, address, ...}.
+// This may contain credentials; NEVER log or return raw JSON.
 const fnosMountConfigPath = "/etc/mountmgr/mount_info.json"
 const maxMountConfigBytes int64 = 4 << 20
+const maxMountConfigDepth = 8
 
-func readMountConfig(path string) ([]mountRecord, error) {
-	f, err := os.Open(path)
+func readMountConfig(filename string) ([]mountRecord, error) {
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxMountConfigBytes+1))
+	limited := io.LimitReader(f, maxMountConfigBytes+1)
+	blob, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("read mount metadata: %w", err)
 	}
-	if int64(len(data)) > maxMountConfigBytes {
+	if int64(len(blob)) > maxMountConfigBytes {
 		return nil, errors.New("mount configuration exceeds safe size limit")
 	}
-	// No metadata or credential fields are written to disk or logs.
-	return decodeMountConfig(data)
+	return decodeMountConfig(blob)
 }
 
-// decodeMountConfig accepts a JSON array, standard fnOS list containers, or
-// a map keyed by mount ID. Individual records use an explicit allowlisted
-// struct, so password, token, and other sensitive properties are discarded.
+// decodeMountConfig walks nested user -> mount-ID maps, arrays and wrappers.
+// The only data retained for each entry are mountRecord's explicitly declared
+// JSON fields. Other fields (including stored passwords) are discarded.
 func decodeMountConfig(data []byte) ([]mountRecord, error) {
-	var arr []mountRecord
-	if err := json.Unmarshal(data, &arr); err == nil {
-		return nonEmptyMountRecords(arr), nil
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, errors.New("invalid mount metadata")
-	}
-	for _, key := range []string{"mounts", "mountInfo", "mountList", "connections", "records", "list", "items", "data", "rsp"} {
-		if nested, exists := obj[key]; exists {
-			return decodeMountConfigContainer(nested)
-		}
-	}
-	return decodeMountConfigMap(obj)
-}
-
-func decodeMountConfigContainer(data []byte) ([]mountRecord, error) {
-	var arr []mountRecord
-	if err := json.Unmarshal(data, &arr); err == nil {
-		return nonEmptyMountRecords(arr), nil
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, errors.New("unsupported mount config container")
-	}
-	return decodeMountConfigMap(obj)
-}
-
-func decodeMountConfigMap(values map[string]json.RawMessage) ([]mountRecord, error) {
-	out := make([]mountRecord, 0, len(values))
-	for key, raw := range values {
-		var r mountRecord
-		if err := json.Unmarshal(raw, &r); err != nil {
-			continue
-		}
-		if r.Name == "" {
-			r.Name = key
-		}
-		if r.MountPoint == "" || r.Comment == "" {
-			continue
-		}
-		out = append(out, r)
+	var out []mountRecord
+	if err := walkMountConfig(data, "", 0, &out); err != nil {
+		return nil, err
 	}
 	if len(out) == 0 {
-		return nil, errors.New("no mount entries in map")
+		return nil, errors.New("no alias entries in mount configuration")
 	}
 	return out, nil
 }
 
-func nonEmptyMountRecords(records []mountRecord) []mountRecord {
-	out := make([]mountRecord, 0, len(records))
-	for _, r := range records {
-		if r.MountPoint != "" && r.Comment != "" {
-			out = append(out, r)
-		}
+func walkMountConfig(data []byte, key string, depth int, out *[]mountRecord) error {
+	if depth > maxMountConfigDepth {
+		return errors.New("nested mount configuration exceeds depth limit")
 	}
-	return out
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err == nil && object != nil {
+		// A leaf is identified by the mountPoint + comment fields. Do not
+		// inspect or copy the password and other credential fields.
+		if _, hasPoint := object["mountPoint"]; hasPoint {
+			if _, hasAlias := object["comment"]; hasAlias {
+				var r mountRecord
+				if err := json.Unmarshal(data, &r); err == nil &&
+					strings.TrimSpace(r.MountPoint) != "" &&
+					strings.TrimSpace(r.Comment) != "" {
+					if r.Name == "" {
+						r.Name = key
+					}
+					*out = append(*out, r)
+				}
+			}
+			return nil
+		}
+		for childKey, child := range object {
+			switch len(child) {
+			case 0:
+				continue
+			default:
+				if child[0] != '{' && child[0] != '[' {
+					continue
+				}
+			}
+			if err := walkMountConfig(child, childKey, depth+1, out); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err == nil && arr != nil {
+		for _, child := range arr {
+			if err := walkMountConfig(child, "", depth+1, out); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return errors.New("invalid mount metadata JSON")
 }

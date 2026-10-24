@@ -77,3 +77,9 @@ Go tests simulate an empty mount-list response and a partial list. Every unmatch
 Go tests create an artificial `mount_info.json` with two CIFS entries, configured aliases and dummy password fields. Tests assert exact mount-point matching (not list order), the intended two-line UI labels, unchanged local metadata and no credentials in serialized API results. Additional tests exercise config array/map wrappers, invalid JSON, missing files, 4 MiB size limit, local-first lookup precedence and API fallback.
 
 A real fnOS test must verify `/etc/mountmgr/mount_info.json` exists on the current firmware and contains mount metadata in one of the supported shapes. Do **not** upload this file, as it may contain passwords.
+
+## v1.2.4 / Reproduced real nested fnOS configuration layout
+
+A published mount-script reads `/etc/mountmgr/mount_info.json` with two nested `to_entries[]` passes. CI now tests exactly that two-level user ID / mount ID structure, including three mounts from two users, Chinese comments, usernames/hosts, dummy credential fields, out-of-order mounts, missing aliases, non-mount records and depth limit checks.
+
+This previously failed in v1.2.3 and now succeeds. Reading the mounted NAS's real file is still outside n2 build-agent capabilities.
