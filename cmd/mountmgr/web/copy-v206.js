@@ -96,6 +96,32 @@ function formatElapsed(start,end){
 const expandedJobs=new Set();
 const expandedTransfers=new Set();
 const detailCache=new Map();
+// Preserve the horizontal offset of the *whole* active-filename list across
+// periodic status refreshes (which reconstruct the task card).
+const liveScrollPositions=new Map();
+let liveTouching=false,liveMouseDragging=false;
+function bindLiveHorizontalScroll(el,id){
+ el.dataset.liveScrollId=id;
+ el.addEventListener('scroll',()=>liveScrollPositions.set(id,el.scrollLeft),{passive:true});
+ el.addEventListener('touchstart',()=>{liveTouching=true;},{passive:true});
+ el.addEventListener('touchend',()=>{liveTouching=false;},{passive:true});
+ el.addEventListener('touchcancel',()=>{liveTouching=false;},{passive:true});
+ let startX=0,startLeft=0,dragging=false;
+ const stopDrag=()=>{dragging=false;liveMouseDragging=false;};
+ el.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='mouse'||e.button!==0)return;
+  dragging=true;liveMouseDragging=true;startX=e.clientX;startLeft=el.scrollLeft;
+  el.setPointerCapture(e.pointerId);
+ });
+ el.addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  el.scrollLeft=startLeft-(e.clientX-startX);
+ });
+ el.addEventListener('pointerup',stopDrag);
+ el.addEventListener('pointercancel',stopDrag);
+ el.addEventListener('lostpointercapture',stopDrag);
+}
+
 function transferPaths(j) {
  const block=node('div','copy-detail-body');
  const paths=(j.items?.length?j.items:(j.sources||[]).map(p=>({source:p,dest:(j.target.endsWith('/')?j.target.slice(0,-1):j.target)+'/'+short(p)})));
@@ -174,6 +200,7 @@ function makeJob(j){
   const summary=node('summary','live-summary','正在传输 '+active+' / '+j.transfers+' 路');
   live.append(summary);
   const body=node('div','live-transfer-list');
+  bindLiveHorizontalScroll(body,j.id);
   if(names.length){
    for(const name of names){const el=node('div','live-transfer-file',name);el.title=name;body.append(el);}
    if(active>names.length)body.append(node('div','live-transfer-more','还有 '+(active-names.length)+' 路正在传输'));
@@ -181,6 +208,7 @@ function makeJob(j){
    body.append(node('div','live-transfer-file','正在等待传输统计…'));
   }
   live.append(body);
+  if(names.some(n=>n.length>44))live.append(node('div','live-transfer-hint','← 左右滑动查看完整文件名 →'));
   live.open=expandedTransfers.has(j.id);
   live.addEventListener('toggle',()=>{if(live.open)expandedTransfers.add(j.id);else expandedTransfers.delete(j.id);});
  }
@@ -195,12 +223,18 @@ async function refresh(){
  if(refreshBusy)return;refreshBusy=true;
  try{
   const data=await api('api/copy/status');lastStatus=data;
+  // Do not destroy the scrolling DOM while a finger or mouse is dragging it.
+  if(liveTouching||liveMouseDragging)return;
   $('connection').classList.remove('offline');$('connection').lastElementChild.textContent='服务运行中';
   if(!parallelInput.dataset.touched)parallelInput.value=data.defaultParallel||Math.max(1,Number(data.cpu)||2)*2;
   const jobs=data.jobs||[];
   const wrap=$('jobs');wrap.replaceChildren();
   if(!jobs.length){const empty=node('div','empty-queue');empty.append(node('span','','◴'),node('p','','暂无任务'));wrap.append(empty);}
   for(const job of jobs)wrap.append(makeJob(job));
+  for(const list of wrap.querySelectorAll('.live-transfer-list[data-live-scroll-id]')){
+   const saved=liveScrollPositions.get(list.dataset.liveScrollId);
+   if(saved>0)list.scrollLeft=saved;
+  }
  }catch(e){$('connection').classList.add('offline');$('connection').lastElementChild.textContent='服务离线';console.warn(e);}
  finally{refreshBusy=false;}
 }

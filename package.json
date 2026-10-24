@@ -1,6 +1,6 @@
 {
   "name": "fnos-mount-manager",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "private": true,
   "description": "fnOS NAS Toolbox: bind-mount alias manager and rclone file copier",
   "scripts": {

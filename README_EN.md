@@ -6,7 +6,7 @@ A community fnOS NAS application combining **Directory Mapping** (previously Mou
 
 **Repository renamed to [codercaizh/fnos-toolbox](https://github.com/codercaizh/fnos-toolbox). The fnOS app ID and internal Go module path remain `fnos-mount-manager` for backward compatibility.**
 
-**Current version: v2.0.7** · ARM64 / x86-64 · fnOS 1.2.0604 or later · Requires root/CAP_SYS_ADMIN for bind mounts · Not an official fnOS product.
+**Current version: v2.0.8** · ARM64 / x86-64 · fnOS 1.2.0604 or later · Requires root/CAP_SYS_ADMIN for bind mounts · Not an official fnOS product.
 
 ## What it does
 
@@ -27,8 +27,9 @@ Example: separate remote Dad and Mom photo sources may be mapped to /vol1/1000/�
 - Bundled **rclone 1.75.2**. Concurrency defaults to **logical CPU count × 2**, or can be configured directly.
 - **Fast mode:** path/name and size comparison, ignoring modification time.
 - **Strict mode:** checksums for change detection followed by a full source/destination content read verification. This is much slower and consumes additional I/O.
-- Live bytes, percentage, transfer speed, ETA in h/m/s, active file transfers, current file names, and count of transferred or skipped files.
+- Live bytes, percentage, transfer speed, ETA in h/m/s, active file transfers, current file names, and count of transferred or skipped files. The entire active filename list supports horizontal touch/mouse dragging; its offset survives polling updates without overflowing the page.
 - Pause/resume, manual retry and persisted task records. An interrupted single file may need to be copied again; file-level skip/resume **is not guaranteed byte-range resumption**.
+- **Safe upgrade and shutdown (v2.0.8)**: freeze the job queue, cancel the active rclone process, wait for exit and persist resumable state before terminating. The lifecycle script waits about 30 seconds and refuses a success status if safe shutdown fails.
 - **One shared rclone copy process per task:** selected folders and standalone files, even on different mounted shares, are exposed under a temporary virtual source. All files share the configured transfer budget, without fixed per-source allocation. In strict mode a separate rclone check starts sequentially after the copy completes (never concurrently). A single individual file can still use fewer active transfer slots.
 - **Recent Transfers:** retain the latest **three completed records** (active, paused and failed jobs remain available). Expand a record to see individual source and destination paths.
 
@@ -42,7 +43,7 @@ Copy does **not** delete source files and does **not** use rclone sync; an exist
 2. **Upgrade Mount Manager in place. Do not uninstall it first.** NAS Toolbox deliberately retains the application ID **fnos-mount-manager** to keep existing settings.
 3. If you have the separate old Quick Copy app installed, finish or pause any running tasks and **keep it installed for the upgrade**. On startup NAS Toolbox attempts to import the latest three **completed** records from the old app. Active jobs are deliberately not migrated or started twice.
 4. Verify both mapping records and transfer history in NAS Toolbox; you can then uninstall the old separate Quick Copy app to save idle RAM.
-5. Ideally let a large copy finish before upgrading. Upgrades interrupt running rclone processes; resume manually afterwards.
+5. **When first upgrading from v2.0.7 or older to v2.0.8, manually pause any copy job:** the previously installed version lacks safe shutdown. Subsequent upgrades use the protected shutdown, while partial individual files may still need to be copied again.
 
 If the mobile app shows cached icons or an old copy page, close the fnOS mobile app fully and reopen it.
 
@@ -94,7 +95,7 @@ bash scripts/build.sh
 python3 scripts/verify-fpk.py
 ~~~
 
-The build produces **dist/nas-toolbox-2.0.7-arm64.fpk** and **dist/nas-toolbox-2.0.7-x86_64.fpk**, plus checksums. The CI workflow runs Go unit tests, the race detector, vet, Playwright UI mocks, and both architectures' package verification.
+The build produces **dist/nas-toolbox-2.0.8-arm64.fpk** and **dist/nas-toolbox-2.0.8-x86_64.fpk**, plus checksums. The CI workflow runs Go unit tests, the race detector, vet, Playwright UI mocks, and both architectures' package verification.
 
 CI uses **mocked fnOS gateway/picker and mount syscalls**; it is not evidence of successful installation, SMB reconnection, or backup/restore on physical hardware. Follow the [hardware validation matrix](docs/TESTING.md) before production use.
 

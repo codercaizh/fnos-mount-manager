@@ -14,7 +14,7 @@ const completed={
  ]
 };
 const active={id:'active1',sources:['/vol1/1000/学习资料/超长网盘资源目录'],target:'/vol1/1000/学习资料',transfers:8,verify:'size',state:'running',created:'2026-10-24T20:22:00+08:00',updated:'2026-10-24T22:03:00+08:00',totalBytes:23459322452,doneBytes:234231244,currentBytes:236622002,speed:99.92*1024*1024,eta:3*3600+34*60+34,totalFiles:999,doneFiles:0,currentFile:'1. Big Muzzy 12 集动画/Muzzy BBC - Unit 1 - American English - MUZZY in GONDOLAND'.repeat(5)};
-active.activeTransfers=8;active.currentFiles=Array.from({length:8},(_,i)=>'系列合集/世界名著音频课程/第'+(i+1)+'集-中文 English title.mp4');
+active.activeTransfers=8;active.currentFiles=Array.from({length:8},(_,i)=>'系列合集/世界名著音频课程/超长路径/来自NAS的文件夹/第'+(i+1)+'集-中文 English title.mp4'.repeat(3));
 active.currentDoneFiles=117;
 const jobs=[active,completed];let lastCreate;
 const sdk=`export class TrimApp{
@@ -66,6 +66,37 @@ const server=http.createServer(async(req,res)=>{
   await page.setViewportSize({width:390,height:844});
   await page.locator('.live-transfers summary').click();
   assert.equal(await page.locator('.live-transfer-file:visible').count(),8);
+  const scrolling=page.locator('.live-transfer-list').first();
+  const metrics=await scrolling.evaluate(el=>({
+    client:el.clientWidth,content:el.scrollWidth,
+    overflow:getComputedStyle(el).overflowX,
+    touch:getComputedStyle(el).touchAction
+  }));
+  assert(metrics.content>metrics.client+100,'long filenames must overflow inside scrollable region '+JSON.stringify(metrics));
+  assert.equal(metrics.overflow,'auto');
+  assert(metrics.touch.includes('pan-x'),'horizontal touch drag is not enabled');
+  const saved=await scrolling.evaluate(el=>{
+    el.scrollLeft=Math.min(180,el.scrollWidth-el.clientWidth);
+    return el.scrollLeft;
+  });
+  assert(saved>0,'horizontal scrolling did not move');
+  await page.locator('#refresh').click();
+  await page.waitForTimeout(200);
+  const restored=await page.locator('.live-transfer-list').first().evaluate(el=>el.scrollLeft);
+  assert(Math.abs(restored-saved)<3,'refresh reset horizontal position '+JSON.stringify({saved,restored}));
+  // Desktop should be able to drag the same list by holding down the mouse.
+  const bounds=await page.locator('.live-transfer-list').first().boundingBox();
+  assert(bounds,'filename list not visible');
+  await page.mouse.move(bounds.x+bounds.width*.6,bounds.y+11);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x+bounds.width*.25,bounds.y+11,{steps:5});
+  await page.mouse.up();
+  const dragged=await page.locator('.live-transfer-list').first().evaluate(el=>el.scrollLeft);
+  assert(dragged>restored+5,'mouse drag did not scroll the list '+JSON.stringify({restored,dragged}));
+  await page.waitForTimeout(1550); // Includes one automatic refresh cycle.
+  const afterTimer=await page.locator('.live-transfer-list').first().evaluate(el=>el.scrollLeft);
+  assert(Math.abs(dragged-afterTimer)<4,'automatic polling lost horizontal position');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),true);
   await page.locator('.live-transfers summary').click();
 
   await page.waitForTimeout(1200);console.log('BEFORE WAIT: URL',page.url(),'JOBS',await page.locator('#jobs').innerText(),'ERRORS',errors);

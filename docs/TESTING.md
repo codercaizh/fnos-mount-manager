@@ -36,6 +36,8 @@ python3 scripts/verify-fpk.py
 | 实时文件进度 | rclone 的 checks + transfers 累计计数、统计上限和 JSON 数据格式 | realtime_files_test.go |
 | 多来源并行 | 8 个独立文件只启动 1 个 rclone copy 子进程并传入 --transfers=8，任务状态正确持久化 | concurrent_integration_test.go（受环境限制） |
 | 单进程复合来源 | combine/union 映射目录+独立文件、中文/引号/空格路径、禁止跟随目录内的链接、增量、严格校验和任务重载 | combined_test.go、combined_manager_integration_test.go（真实 rclone 可选） |
+| 安全升级与停止 | 取消 rclone、等待检查点持久化、超时拒绝退出、阻止停止中的恢复请求、旧二进制被替换后的识别 | graceful_shutdown_test.go、shutdown_process_integration_test.go、service_shutdown_script_test.go |
+| 实时文件名横向拖动 | 手机窄屏、横向滚动、自动刷新保留偏移、鼠标拖动、不导致页面溢出 | ui-copy-overflow-smoke.cjs |
 | 目录映射 UI | 官方选择器回调、远程别名、移动端布局、创建和修改交互 | scripts/ui-smoke.cjs |
 | 合并 UI | 目录映射/复制切换、最近记录展开后来源/目标路径、来源选择与创建参数 | scripts/ui-toolbox-smoke.cjs |
 | 复制手机 UI | 活动文件列表、已完成文件数、长路径、320/360/375/390/412/430px 宽度无横向溢出 | scripts/ui-copy-overflow-smoke.cjs |

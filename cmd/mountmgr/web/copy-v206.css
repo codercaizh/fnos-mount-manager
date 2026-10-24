@@ -101,6 +101,10 @@ html,body{width:100%;max-width:100%;margin:0}
 .live-summary::-webkit-details-marker{display:none}
 .live-summary:after{content:"⌄";color:#849bc4;font-size:16px;margin-left:6px}
 .live-transfers[open] .live-summary:after{transform:rotate(180deg)}
-.live-transfer-list{display:grid;gap:6px;margin-top:10px;min-width:0}
-.live-transfer-file{min-width:0;max-width:100%;font-size:10px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#677c9b}
+.live-transfer-list{display:block;margin-top:10px;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#a6b9dc transparent;cursor:grab;user-select:none}
+.live-transfer-list:active{cursor:grabbing}
+.live-transfer-list::-webkit-scrollbar{height:4px}
+.live-transfer-list::-webkit-scrollbar-thumb{background:#a6b9dc;border-radius:8px}
+.live-transfer-file{display:block;width:max-content;min-width:100%;max-width:none;margin:0 0 6px;font-size:10px;line-height:1.6;white-space:nowrap;overflow:visible;text-overflow:clip;color:#677c9b}
+.live-transfer-hint{margin-top:7px;color:#91a6c3;font-size:10px;text-align:center}
 .live-transfer-more{font-size:10px;color:#94a5c1}

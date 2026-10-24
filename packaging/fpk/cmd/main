@@ -11,7 +11,10 @@ running() {
   local pid cmd
   pid="$(cat "$PIDFILE" 2>/dev/null || true)"
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
-  cmd="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  cmd="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+  # During in-place upgrades Linux may append " (deleted)" to the old
+  # executable pathname. It is still our daemon and must be stopped safely.
+  cmd="${cmd% (deleted)}"
   [[ "$cmd" == "$BIN" ]]
 }
 case "${1:-}" in
@@ -35,11 +38,16 @@ case "${1:-}" in
   if running;then
     pid="$(cat "$PIDFILE")"
     kill -TERM "$pid"
-    for i in $(seq 1 40);do
-      [[ ! -e "/proc/$pid/exe" ]] && break
+    # Allow the Go service to cancel rclone, wait for its exit, and persist
+    # paused task checkpoints. Never force-kill a transfer during upgrade.
+    for i in $(seq 1 150);do
+      if ! running;then break;fi
       sleep 0.2
     done
-    if running;then echo "停止失败，PID=$pid" >&2;exit 1;fi
+    if running;then
+      echo "安全停止超时（PID=$pid），复制任务可能尚未保存；已取消本次停止，请稍后重试升级" >&2
+      exit 1
+    fi
   fi
   rm -f "$PIDFILE" "$SOCKET"
   ;;

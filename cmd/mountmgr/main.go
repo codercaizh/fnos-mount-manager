@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -1104,7 +1105,24 @@ func main() {
 	server := &http.Server{Handler: http.HandlerFunc(s.serve), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
-	go func() { <-signals; s.copier.Stop(); _ = server.Close() }()
+	go func() {
+		for range signals {
+			// Do not close the HTTP server or exit until rclone has exited and
+			// the queue and active task are safely checkpointed.
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			err := s.copier.StopAndWait(ctx)
+			cancel()
+			if err != nil {
+				log.Printf("safe shutdown refused; service remains alive: %v", err)
+				continue // A later TERM can retry after the child exits.
+			}
+			log.Print("safe shutdown completed; copy jobs checkpointed")
+			if err := server.Close(); err != nil {
+				log.Printf("close HTTP server: %v", err)
+			}
+			return
+		}
+	}()
 	log.Printf("NAS Toolbox serving via %s, %d mount records", *socket, len(s.Records))
 	e = server.Serve(ln)
 	if e != nil && !errors.Is(e, http.ErrServerClosed) && !errors.Is(e, io.EOF) {

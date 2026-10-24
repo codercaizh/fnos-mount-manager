@@ -46,3 +46,11 @@ The privileged service performs a **read-only** (up to 4 MiB) metadata lookup ag
 **English:** Copy endpoints require the same authenticated fnOS gateway plus JSON and a distinct custom request header. A legacy pause/resume route is accepted only with that header. Paths are restricted, symlinks and overlapping trees rejected; rclone copy never deletes sources but can replace conflicting destinations. Task state may contain private filenames. Concurrency and checksums increase resource usage, and a partially transferred individual file may be restarted after interruption.
 
 复制任务通过 rclone combine/union 将多个来源虚拟化；仅对用户选择的单独文件创建私有临时符号链接（只在独立 local backend 开启 copy_links），目录来源保持默认不跟随符号链接。临时配置文件权限为 0600，完成/失败/暂停后清理。rclone combine 不支持包含等号或换行的目录别名，因此在执行前拒绝该名称，避免错误目标路径。
+
+## v2.0.8 安全停止及文件名展示
+
+新版本收到服务停止信号时，先停止新任务调度、阻止恢复，记录排队任务的暂停状态，再向当前 rclone 发送 SIGINT 请求优雅退出（最多等待约 8 秒，然后才强制结束子进程）。Go 服务等待工作线程确认 rclone 退出、将活动任务写成可恢复的暂停记录，成功后才关闭 HTTP 服务。检查点无法写入或等待超过 25 秒时，不应宣称停止成功；生命周期脚本最多等待约 30 秒，如服务仍运行则失败并保留文件和 PID 记录。
+
+生命周期脚本识别旧二进制被更新替换后 /proc/PID/exe 的 (deleted) 标记，避免误以为旧服务已退出。**从 v2.0.7 及更早的已安装版本首次升级至 v2.0.8 时，旧服务还不具有这些安全保护，请先手动暂停复制任务。**
+
+实时文件名列表横向滚动只是前端展示变化，不修改源、目标或校验策略；保留位置时不会把长文件名扩展到整页宽度。

@@ -60,12 +60,14 @@ type Job struct {
 	Items            []Entry   `json:"items,omitempty"`
 }
 type Manager struct {
-	mu        sync.Mutex
-	jobs      []*Job
-	stateFile string
-	rclone    string
-	active    string
-	cancel    context.CancelFunc
+	mu         sync.Mutex
+	jobs       []*Job
+	stateFile  string
+	rclone     string
+	active     string
+	cancel     context.CancelFunc
+	activeDone chan struct{} // closed only after an active worker has persisted its final state
+	stopping   bool          // do not start or resume work during service shutdown
 }
 
 func cleanPath(p string) (string, error) {
@@ -291,7 +293,7 @@ func (m *Manager) lookup(id string) *Job {
 }
 func (m *Manager) kick() {
 	m.mu.Lock()
-	if m.active != "" {
+	if m.active != "" || m.stopping {
 		m.mu.Unlock()
 		return
 	}
@@ -307,6 +309,7 @@ func (m *Manager) kick() {
 		return
 	}
 	m.active = selected.ID
+	m.activeDone = make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
 	selected.State = "scanning"
@@ -330,11 +333,18 @@ func (m *Manager) end(id, state string, err error) {
 	j := m.lookup(id)
 	if j != nil {
 		if j.State != "paused" {
-			j.State = state
-			if err != nil {
-				j.Error = err.Error()
+			// A service shutdown is always resumable, even if scanning encounters
+			// an error while its context is being cancelled.
+			if m.stopping && state != "completed" {
+				j.State = "paused"
+				j.Error = "服务升级或停止后已自动暂停，点击继续可增量恢复"
 			} else {
-				j.Error = ""
+				j.State = state
+				if err != nil {
+					j.Error = err.Error()
+				} else {
+					j.Error = ""
+				}
 			}
 		}
 		if j.State != "paused" {
@@ -352,6 +362,10 @@ func (m *Manager) end(id, state string, err error) {
 	if m.active == id {
 		m.active = ""
 		m.cancel = nil
+		if m.activeDone != nil {
+			close(m.activeDone)
+			m.activeDone = nil
+		}
 	}
 	m.mu.Unlock()
 	m.kick()
@@ -406,6 +420,11 @@ func (m *Manager) runRclone(ctx context.Context, id string, args ...string) erro
 }
 func (m *Manager) runRcloneTracked(ctx context.Context, id string, onStats func(rcStats), args ...string) error {
 	cmd := exec.CommandContext(ctx, m.rclone, args...)
+	// Ask rclone to stop cleanly first so it can close its open files and
+	// discard partial transfers. If it hangs on a disconnected SMB backend,
+	// os/exec force-kills it after the bounded grace period.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 8 * time.Second
 	cmd.Env = append(os.Environ(), "RCLONE_CONFIG=/dev/null")
 	stderr, e := cmd.StderrPipe()
 	if e != nil {
@@ -831,6 +850,11 @@ func (m *Manager) Serve(w http.ResponseWriter, r *http.Request) {
 		}
 		job := &Job{ID: idgen(), Sources: normalized, Target: filepath.Clean(q.Target), Transfers: q.Parallel, Verify: q.Verify, State: "queued", Created: time.Now(), Updated: time.Now(), ETA: -1}
 		m.mu.Lock()
+		if m.stopping {
+			m.mu.Unlock()
+			fail(w, http.StatusServiceUnavailable, "服务正在安全停止，请升级完成后重新提交")
+			return
+		}
 		m.jobs = append(m.jobs, job)
 		e = m.saveLocked()
 		m.mu.Unlock()
@@ -854,6 +878,11 @@ func (m *Manager) Serve(w http.ResponseWriter, r *http.Request) {
 		if j == nil {
 			m.mu.Unlock()
 			fail(w, 404, "任务不存在")
+			return
+		}
+		if m.stopping && path == "/api/resume" {
+			m.mu.Unlock()
+			fail(w, http.StatusServiceUnavailable, "服务正在安全停止，暂不接受恢复任务")
 			return
 		}
 		switch path {
@@ -967,12 +996,51 @@ func (m *Manager) ImportCompletedHistory(filename string) (int, error) {
 	return added, nil
 }
 
-// Stop makes the in-progress rclone command exit on service shutdown.
-// Persistence is handled when the worker observes context cancellation.
-func (m *Manager) Stop() {
+// StopAndWait quiesces the queue, cancels any active copy, and waits until the
+// worker is finished (including rclone's exit and the final checkpoint write).
+// The service may exit only if this returns nil. On timeout, it must remain
+// alive and allow another shutdown attempt rather than silently losing state.
+func (m *Manager) StopAndWait(ctx context.Context) error {
 	m.mu.Lock()
+	m.stopping = true
+	for _, j := range m.jobs {
+		if j.State == "queued" {
+			j.State = "paused"
+			j.Error = "服务升级或停止后已自动暂停，点击继续可增量恢复"
+			j.Updated = time.Now()
+		}
+	}
+	if err := m.saveLocked(); err != nil {
+		m.mu.Unlock()
+		return fmt.Errorf("保存待执行任务失败，拒绝停止：%w", err)
+	}
+	done := m.activeDone
 	if m.cancel != nil {
 		m.cancel()
 	}
 	m.mu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return fmt.Errorf("等待复制进程结束超时，拒绝停止：%w", ctx.Err())
+		}
+	}
+	// Final verification happens under the same lock as worker persistence.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active != "" {
+		return errors.New("复制任务仍在运行，拒绝停止")
+	}
+	for _, j := range m.jobs {
+		if j.State == "running" || j.State == "scanning" || j.State == "verifying" || j.State == "queued" {
+			j.State = "paused"
+			j.Error = "服务升级或停止后已自动暂停，点击继续可增量恢复"
+			j.Updated = time.Now()
+		}
+	}
+	if err := m.saveLocked(); err != nil {
+		return fmt.Errorf("复制任务状态保存失败，拒绝停止：%w", err)
+	}
+	return nil
 }
