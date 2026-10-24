@@ -1,6 +1,6 @@
 {
   "name": "fnos-mount-manager",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "fnOS bind-mount manager and its reproducible test/build toolchain",
   "scripts": {

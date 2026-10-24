@@ -63,3 +63,14 @@ main{display:flex;flex-direction:column;gap:18px}
 .secondary{background:#f0f3f8;color:#66778f}
 .confirm-btn{background:#317ef5;color:#fff}
 @media(max-width:600px){.dialog-card{padding:18px}.overlay{align-items:center}}
+
+/* Source picker two-step choices */
+.choice-item{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5ecf7;border-radius:12px;text-align:left;padding:14px;width:100%;color:#30435b}
+.choice-item:hover{border-color:#8fb7fb;background:#f3f8ff}
+.choice-icon{width:41px;height:41px;border-radius:11px;display:grid;place-items:center;background:#eef3ff;color:#3a7bea;flex-shrink:0}
+.choice-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.choice-copy{display:flex;flex-direction:column;gap:5px}
+.choice-copy strong{font-size:14px}
+.choice-copy small{color:#91a0b4;font-size:11px}
+.back-action{border:0;background:transparent;color:#317ef5;font-size:12px;text-align:left;padding:5px 4px 10px;align-self:flex-start}
+.share-item strong{overflow-wrap:anywhere}

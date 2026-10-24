@@ -6,7 +6,7 @@ A lightweight folder-alias manager for **fnOS NAS**, powered by Linux bind mount
 
 ![Mobile user interface](docs/screenshot-mobile.png)
 
-> **v1.2.0** · ARM64 and x86_64 · fnOS ≥ 1.2.0604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
+> **v1.2.1** · ARM64 and x86_64 · fnOS ≥ 1.2.1604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
 
 ## The problem
 
@@ -82,7 +82,7 @@ chmod +x dist/fnpack-linux-amd64
 bash scripts/build.sh
 ```
 
-Outputs: `dist/fnos-mount-manager-1.2.0-arm64.fpk` and `dist/fnos-mount-manager-1.2.0-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
+Outputs: `dist/fnos-mount-manager-1.2.1-arm64.fpk` and `dist/fnos-mount-manager-1.2.1-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
 
 The official fnOS SDK is downloaded using a locked npm dependency (`@trimjs/web-app@0.5.0`); its minified distribution is **not committed as original project source**.
 
@@ -107,16 +107,13 @@ Persistent state: `TRIM_PKGVAR/private/mounts.json` (atomic update, file mode `0
 
 Original project code is licensed under [MIT](LICENSE). fnOS, its SDK, and fnpack belong to their respective maintainers; see [third-party attributions](docs/THIRD_PARTY.md). **This is an independent community project, not an official fnOS application.** Include an fnOS version, CPU architecture and sanitized logs when reporting issues.
 
-## v1.2.0: whole SMB share roots and creating destination folders
+## v1.2.1: two-step source picker and fnOS SMB aliases
 
-### Mount an entire SMB share
+Click **Source Directory** to open a two-option dialog:
 
-Click **Entire SMB share** below the source picker to select one of the active CIFS/SMB3 mount **roots**, for example `/vol02/1000-0-cef8fa37`. This works even when a share has no subdirectories. It uses the actual kernel mount list, so disconnected shares will not appear. The original native picker continues to support selecting specific nested folders.
+- **Choose Folder**: launch the official fnOS folder picker for an individual subdirectory.
+- **Choose Remote Directory**: open the list of currently mounted SMB share roots, including empty shares. Labels prefer fnOS's configured mount `comment`, plus `username@server` using the same convention as File Manager. Opaque `/vol02/...` IDs remain internal mapping values and are never the primary list label.
 
-### Create folders while choosing the destination
+The daemon first attempts to read `appcgi.mountmgr.list` over the authenticated fnOS API-scope socket, then `trim.file.convertPath`, and finally displays the SMB share/server parsed from the kernel mount source if those APIs are inaccessible. The last resort may differ from a user-defined fnOS alias on older firmware. SMB credentials are not exposed to the browser.
 
-- **Native fnOS host:** the destination `pickFile` request now includes `directory: true, creatable: true`, enabling the host's folder-creation UI where the host supports it.
-- **Standalone App Auth flow:** the SDK does not guarantee `creatable` is honored for route-based pickers. Use the new **New folder** action under the destination picker, select an existing local parent first, then create one child folder. The created child is automatically selected.
-- The created folder becomes the **destination parent**; still provide a separate mapping alias name. For example: parent `/vol1/1000/share`, new folder `Backups`, alias `Photos` gives `/vol1/1000/share/Backups/Photos`.
-
-The create-folder API rejects non-local destinations, invalid names, symlinks and paths inside existing managed aliases. It never deletes existing content.
+The **Local Directory** tile only invokes the official picker with `directory: true` and `creatable: true`. The separate **New Folder** button and privileged folder-creation endpoint are gone. Whether fnOS shows its own New Folder action depends on host support (especially standalone App Auth).

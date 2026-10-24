@@ -60,11 +60,10 @@ The `scripts/build.sh` command cross-compiles both ARM64 and x86_64 binaries and
 - Root capability and startup service behavior depend on fnOS firmware policy; CI cannot certify a particular NAS version.
 - No write workload is performed on production shares.
 
-## v1.2.0 / Whole-share roots and directory creation
+## v1.2.1 source dialog and alias verification
 
-- Unit tests verify remote SMB/CIFS root selection using mountinfo, including empty shares with no nested directories; non-SMB filesystems and nested mount entries are filtered out.
-- Unit tests cover the folder-create path/name policy, actual creation in a temporary directory, duplicate-directory rejection, symlinked parents and managed-alias protection.
-- The Playwright test exercises selecting the root of an **empty** remote share from the new dialog and then creating a local folder through the application fallback. The subsequent mapping creation must use the correct new paths.
-- Native SDK picker `creatable: true` is host-dependent; the standalone route flow has a separate application fallback. A real fnOS desktop/mobile host still needs manual confirmation that the native creation option appears and works.
-
-Verify against a disposable SMB share before production use. This project never overwrites or unmounts an arbitrary foreign mount as part of browser tests.
+- The browser smoke test checks the source click **does not** immediately launch the SDK, shows **Choose Folder** / **Choose Remote Directory**, and that the former starts the official fnOS picker.
+- The SMB list shows human-readable display labels, not opaque `/vol02/...` paths. Selecting an alias must still submit the **correct original root** as the mapping source.
+- Local directory creation happens **only** through the host picker (`creatable:true`); there is no app-specific folder creation button or API.
+- Go tests cover mountinfo parsing, `//server/share` fallback labels, decoding fnOS mount-list shapes, exact mountPoint matching (no cross-assignment), custom comments, and semantic path conversion.
+- **Real-device test still needed:** confirm `appcgi.mountmgr.list` or `trim.file.convertPath` is permitted to a privileged third-party FPK on this fnOS version and that the actual custom alias matches File Manager. If not available, check fallback displays recognizable share/server information. Confirm folder creation inside the native fnOS picker.
