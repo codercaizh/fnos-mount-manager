@@ -1,8 +1,10 @@
 # NAS 工具箱（NAS Toolbox）
 
-[English](README_EN.md) · [测试与验收](docs/TESTING.md) · [安全说明](docs/SECURITY.md) · [第三方依赖](docs/THIRD_PARTY.md) · [GitHub Releases](https://github.com/codercaizh/fnos-mount-manager/releases)
+[English](README_EN.md) · [测试与验收](docs/TESTING.md) · [安全说明](docs/SECURITY.md) · [第三方依赖](docs/THIRD_PARTY.md) · [GitHub Releases](https://github.com/codercaizh/fnos-toolbox/releases)
 
 一个飞牛 fnOS 应用，将原「挂载管家」的**目录映射**与基于 rclone 的**快速复制**合并到一个常驻 Go 服务。两项功能共用应用私有数据目录，不需要为复制任务单独常驻一个后台进程。
+
+**仓库已更名为 [codercaizh/fnos-toolbox](https://github.com/codercaizh/fnos-toolbox)。飞牛应用 ID 和内部 Go 模块路径为兼容旧版仍沿用 `fnos-mount-manager`，无需卸载重装。**
 
 **当前版本：v2.0.6** · ARM64 / x86-64 · fnOS ≥ 1.2.0604 · 需要 root/CAP_SYS_ADMIN（目录映射） · 社区项目，非飞牛官方应用。
 
@@ -32,7 +34,7 @@
 
 ## 安装与升级
 
-1. 在 [Releases](https://github.com/codercaizh/fnos-mount-manager/releases) 下载对应 CPU 架构的 NAS Toolbox FPK；使用飞牛应用中心的「手动安装」功能。
+1. 在 [Releases](https://github.com/codercaizh/fnos-toolbox/releases) 下载对应 CPU 架构的 NAS Toolbox FPK；使用飞牛应用中心的「手动安装」功能。
 2. 原有「挂载管家」用户**直接覆盖升级，不要先卸载**。应用继续使用旧包 ID **fnos-mount-manager**，以保留原有映射记录。
 3. 如果还安装了旧独立「快速复制」，请先完成或暂停旧任务，**暂时不要卸载旧 App**。新版第一次启动时会尝试读取旧应用私有记录，只导入最近 3 条**已完成**任务；不会接管旧版进行中的任务。
 4. 确认 NAS 工具箱里的映射与历史记录无误后，再卸载旧独立「快速复制」应用以节省常驻内存。
@@ -66,8 +68,8 @@
 环境：Linux x86-64 构建机、Go 1.23+、Node.js 22+、npm、curl、unzip、官方 fnpack 1.2.3；仓库**不提交**第三方 SDK 或 rclone 二进制。
 
 ~~~bash
-git clone https://github.com/codercaizh/fnos-mount-manager.git
-cd fnos-mount-manager
+git clone https://github.com/codercaizh/fnos-toolbox.git
+cd fnos-toolbox
 
 npm ci --ignore-scripts
 npm run prepare:sdk

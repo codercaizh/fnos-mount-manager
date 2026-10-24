@@ -1,8 +1,10 @@
 # NAS Toolbox for fnOS
 
-[简体中文](README.md) · [Testing](docs/TESTING.md) · [Security](docs/SECURITY.md) · [Third-party notices](docs/THIRD_PARTY.md) · [Releases](https://github.com/codercaizh/fnos-mount-manager/releases)
+[简体中文](README.md) · [Testing](docs/TESTING.md) · [Security](docs/SECURITY.md) · [Third-party notices](docs/THIRD_PARTY.md) · [Releases](https://github.com/codercaizh/fnos-toolbox/releases)
 
 A community fnOS NAS application combining **Directory Mapping** (previously Mount Manager) and **Quick Copy** (rclone) in **one Go daemon, one FPK, and one application-private state directory**.
+
+**Repository renamed to [codercaizh/fnos-toolbox](https://github.com/codercaizh/fnos-toolbox). The fnOS app ID and internal Go module path remain `fnos-mount-manager` for backward compatibility.**
 
 **Current version: v2.0.6** · ARM64 / x86-64 · fnOS 1.2.0604 or later · Requires root/CAP_SYS_ADMIN for bind mounts · Not an official fnOS product.
 
@@ -34,7 +36,7 @@ Copy does **not** delete source files and does **not** use rclone sync; an exist
 
 ## Installation and upgrades
 
-1. Download the appropriate NAS Toolbox ARM64 or x86-64 FPK from [GitHub Releases](https://github.com/codercaizh/fnos-mount-manager/releases). Install through fnOS App Center → Manual install.
+1. Download the appropriate NAS Toolbox ARM64 or x86-64 FPK from [GitHub Releases](https://github.com/codercaizh/fnos-toolbox/releases). Install through fnOS App Center → Manual install.
 2. **Upgrade Mount Manager in place. Do not uninstall it first.** NAS Toolbox deliberately retains the application ID **fnos-mount-manager** to keep existing settings.
 3. If you have the separate old Quick Copy app installed, finish or pause any running tasks and **keep it installed for the upgrade**. On startup NAS Toolbox attempts to import the latest three **completed** records from the old app. Active jobs are deliberately not migrated or started twice.
 4. Verify both mapping records and transfer history in NAS Toolbox; you can then uninstall the old separate Quick Copy app to save idle RAM.
@@ -67,8 +69,8 @@ The daemon restricts source and destination paths to supported fnOS storage root
 Requirements: Linux x86-64 development machine, **Go 1.23+**, Node.js 22+, npm, curl, unzip and official fnpack v1.2.3.
 
 ~~~bash
-git clone https://github.com/codercaizh/fnos-mount-manager.git
-cd fnos-mount-manager
+git clone https://github.com/codercaizh/fnos-toolbox.git
+cd fnos-toolbox
 npm ci --ignore-scripts
 npm run prepare:sdk
 

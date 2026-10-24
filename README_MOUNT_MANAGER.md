@@ -2,7 +2,7 @@
 
 # 挂载管家 · fnOS Mount Manager
 
-[English](README_EN.md) · [测试文档](docs/TESTING.md) · [安全说明](docs/SECURITY.md) · [下载 Releases](https://github.com/codercaizh/fnos-mount-manager/releases)
+[English](README_EN.md) · [测试文档](docs/TESTING.md) · [安全说明](docs/SECURITY.md) · [下载 Releases](https://github.com/codercaizh/fnos-toolbox/releases)
 
 一个面向 **飞牛 fnOS 的轻量目录映射管理器**。利用 Linux bind mount 将系统已连接的 SMB/CIFS 远程目录映射到本地共享目录，帮助原版「备份」应用访问远程 NAS 数据，**无需修改系统程序**。
 
@@ -34,7 +34,7 @@
 
 ## 安装和操作
 
-1. 从 [Releases](https://github.com/codercaizh/fnos-mount-manager/releases) 下载 **arm64** 或 **x86_64** 对应的 FPK。
+1. 从 [Releases](https://github.com/codercaizh/fnos-toolbox/releases) 下载 **arm64** 或 **x86_64** 对应的 FPK。
 2. fnOS「应用中心 → 手动安装」，选择对应 FPK 并启动「挂载管家」。
 3. 提前在 fnOS 系统**远程挂载**中连接好目标 SMB/CIFS 共享。
 4. 选择来源目录（例如 `/vol02/1000-0-xxx/Photos`）及本地父目录（例如 `/vol1/1000/share`）。
@@ -59,8 +59,8 @@
 需要 Go 1.22+、Node.js 22+、npm、Linux x86_64（作为编译主机）及官方 `fnpack 1.2.3`。构建同时生成两种架构的 FPK：
 
 ```bash
-git clone https://github.com/codercaizh/fnos-mount-manager.git
-cd fnos-mount-manager
+git clone https://github.com/codercaizh/fnos-toolbox.git
+cd fnos-toolbox
 
 npm ci --ignore-scripts
 npm run prepare:sdk
