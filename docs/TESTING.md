@@ -83,3 +83,11 @@ A real fnOS test must verify `/etc/mountmgr/mount_info.json` exists on the curre
 A published mount-script reads `/etc/mountmgr/mount_info.json` with two nested `to_entries[]` passes. CI now tests exactly that two-level user ID / mount ID structure, including three mounts from two users, Chinese comments, usernames/hosts, dummy credential fields, out-of-order mounts, missing aliases, non-mount records and depth limit checks.
 
 This previously failed in v1.2.3 and now succeeds. Reading the mounted NAS's real file is still outside n2 build-agent capabilities.
+
+## v1.2.5 / Two distinct sources under one local parent
+
+A new multi-record Go test verifies that two sibling target aliases (`爸爸相册` and `妈妈相册`) can coexist with two distinct `/vol02/<mount-id>` sources, while reusing either exact source is rejected. Mocked bind syscalls verify each alias receives its **own source path**, not the previous one.
+
+The browser smoke test now creates a Mom mapping, checks that the source picker resets (local parent stays selected), tries unsuccessfully to create Dad by merely changing the name, then selects the separate Dad SMB root and creates the second mapping. It tests explicit alias/name mismatch confirmation and the safe correction flow: disable → Change source → re-enable.
+
+Go tests also check disabled metadata edits preserve target names and other records, and that failure to persist a source change rolls the in-memory record back. Real mounted SMB file contents and the fnOS-specific backup integration still require device-level validation.

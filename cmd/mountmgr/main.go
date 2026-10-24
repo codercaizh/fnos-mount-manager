@@ -117,6 +117,49 @@ func strictName(name string) error {
 	}
 	return nil
 }
+
+// duplicateSource returns another mapping with the same exact source path.
+// Most such mappings are accidental: the create form must reselect a source.
+func duplicateSource(records []*Record, source string, except *Record) *Record {
+	for _, r := range records {
+		if r != except && r.Source == source {
+			return r
+		}
+	}
+	return nil
+}
+
+func validateSourceEditState(record *Record, ms []MountInfo) error {
+	if record.Enabled {
+		return errors.New("请先停止备份任务并停用映射，然后更换来源")
+	}
+	if _, mounted := getMount(ms, record.Target); mounted {
+		return errors.New("本地目标仍处于挂载状态，请先安全卸载")
+	}
+	return nil
+}
+
+// saveDisabledSource only changes durable metadata. It never touches the
+// bind mount or target directory, and rolls back RAM state on save failure.
+func saveDisabledSource(s *Store, record *Record, source string) error {
+	oldSource, oldMountID, oldStatus, oldError, oldChecked :=
+		record.Source, record.MountID, record.Status, record.Error, record.Checked
+	record.Source = source
+	record.MountID = ""
+	record.Status = "disabled"
+	record.Error = ""
+	record.Checked = ""
+	if err := persisted(s); err != nil {
+		record.Source = oldSource
+		record.MountID = oldMountID
+		record.Status = oldStatus
+		record.Error = oldError
+		record.Checked = oldChecked
+		return err
+	}
+	return nil
+}
+
 func overlap(a, b string) bool {
 	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
@@ -183,6 +226,20 @@ func remoteSharesFromMounts(ms []MountInfo) []RemoteShare {
 	return out
 }
 
+// sourceLabelForRecord resolves a source against the matched live SMB roots.
+// It is display-only: binding always uses the exact persisted Record.Source.
+func sourceLabelForRecord(source string, shares []RemoteShare) string {
+	bestLen := 0
+	label := ""
+	for _, share := range shares {
+		if (source == share.Path || strings.HasPrefix(source, share.Path+"/")) && len(share.Path) > bestLen {
+			suffix := strings.TrimPrefix(source, share.Path)
+			label = share.Name + suffix
+			bestLen = len(share.Path)
+		}
+	}
+	return label
+}
 func remoteReady(p string, ms []MountInfo) bool {
 	if !remotePath(p) {
 		return true
@@ -443,12 +500,27 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	if path == "/api/status" && r.Method == "GET" {
 		s.Lock()
 		defer s.Unlock()
-		type state struct {
-			Records  []*Record `json:"records"`
-			Root     bool      `json:"root"`
-			Interval string    `json:"interval"`
+		type view struct {
+			*Record
+			SourceLabel string `json:"sourceLabel,omitempty"`
 		}
-		response(w, 200, state{s.Records, os.Geteuid() == 0, "60 秒"})
+		type state struct {
+			Records  []view `json:"records"`
+			Root     bool   `json:"root"`
+			Interval string `json:"interval"`
+		}
+		var shares []RemoteShare
+		if ms, err := mounts(); err == nil {
+			shares = remoteSharesFromMounts(ms)
+			if aliases, err := readMountConfig(fnosMountConfigPath); err == nil {
+				applyMountAliases(shares, aliases)
+			}
+		}
+		views := make([]view, 0, len(s.Records))
+		for _, record := range s.Records {
+			views = append(views, view{record, sourceLabelForRecord(record.Source, shares)})
+		}
+		response(w, 200, state{views, os.Geteuid() == 0, "60 秒"})
 		return
 	}
 	if path == "/api/create" && r.Method == "POST" {
@@ -498,6 +570,10 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Lock()
 		defer s.Unlock()
+		if used := duplicateSource(s.Records, src, nil); used != nil {
+			fail(w, 409, "该来源已经映射到 "+used.Target+"，请重新选择其他来源")
+			return
+		}
 		for _, v := range s.Records {
 			if overlap(v.Target, target) || overlap(src, v.Target) || overlap(target, v.Source) {
 				fail(w, 409, "与其他映射的目标或来源存在嵌套冲突")
@@ -541,6 +617,77 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 			log.Printf("persist after initial mount: %v", e)
 		}
 		response(w, 201, rec)
+		return
+	}
+	// Changing the source never touches the target's files or remote SMB
+	// content. A mapping must be disabled and fully unmounted first, so the
+	// bind mount cannot change underneath active backup operations.
+	if path == "/api/change-source" && r.Method == "POST" {
+		var in struct{ ID, Source string }
+		if !readJSON(w, r, &in) {
+			return
+		}
+		newSource, err := cleanAbsolute(in.Source)
+		if err != nil || !sourceAllowed(newSource) {
+			fail(w, 400, "请选择有效的远程挂载或飞牛本地共享目录")
+			return
+		}
+		if err := checkNoSymlink(newSource); err != nil {
+			fail(w, 400, "新来源路径不存在或不可用: "+err.Error())
+			return
+		}
+		ms, err := mounts()
+		if err != nil {
+			fail(w, 500, "无法读取当前挂载状态")
+			return
+		}
+		if !remoteReady(newSource, ms) {
+			fail(w, 409, "新来源尚未挂载")
+			return
+		}
+		s.Lock()
+		defer s.Unlock()
+		var targetRecord *Record
+		for _, v := range s.Records {
+			if v.ID == in.ID {
+				targetRecord = v
+				break
+			}
+		}
+		if targetRecord == nil {
+			fail(w, 404, "映射记录不存在")
+			return
+		}
+		if err := validateSourceEditState(targetRecord, ms); err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		if overlap(newSource, targetRecord.Target) {
+			fail(w, 400, "新来源与目标目录存在嵌套冲突")
+			return
+		}
+		if used := duplicateSource(s.Records, newSource, targetRecord); used != nil {
+			fail(w, 409, "该来源已映射到 "+used.Target+"，请选另一条来源")
+			return
+		}
+		for _, other := range s.Records {
+			if other == targetRecord {
+				continue
+			}
+			if overlap(newSource, other.Target) || overlap(other.Source, targetRecord.Target) {
+				fail(w, 409, "新来源与现有映射路径冲突")
+				return
+			}
+		}
+		if targetRecord.Source == newSource {
+			response(w, 200, targetRecord)
+			return
+		}
+		if err := saveDisabledSource(s, targetRecord, newSource); err != nil {
+			fail(w, 500, "更新来源失败: "+err.Error())
+			return
+		}
+		response(w, 200, targetRecord)
 		return
 	}
 	if path == "/api/rename" && r.Method == "POST" {

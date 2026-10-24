@@ -6,7 +6,7 @@ A lightweight folder-alias manager for **fnOS NAS**, powered by Linux bind mount
 
 ![Mobile user interface](docs/screenshot-mobile.png)
 
-> **v1.2.2** · ARM64 and x86_64 · fnOS ≥ 1.2.1604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
+> **v1.2.5** · ARM64 and x86_64 · fnOS ≥ 1.2.0604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
 
 ## The problem
 
@@ -26,7 +26,7 @@ The resulting path is a **second view of the same remote data**, not a copy, syn
 - **Native fnOS folder picker** via pinned `@trimjs/web-app` SDK; remote sources and local shared destinations are selected using the system UI.
 - **Read-only and read/write bind mounts** (use read-only for backup sources, read/write when restoring files to a remote destination).
 - **Automatic reconciliation** on service startup and every 60 seconds; re-establishes aliases after their remote sources recover.
-- **Multiple mappings**, independent names, enabled states, health indicators, retry, rename and removal.
+- **Multiple mappings**, independent names, enabled states, health indicators, retry, change source, rename and removal.
 - **Defensive path validation**: reject non-empty destinations, symlinks, unsupported system paths, overlapping mappings, and foreign mounts.
 - **Small footprint**: Go native service, standard fnOS FPK, private Unix-socket HTTP gateway, no Docker or exposed management port.
 
@@ -82,7 +82,7 @@ chmod +x dist/fnpack-linux-amd64
 bash scripts/build.sh
 ```
 
-Outputs: `dist/fnos-mount-manager-1.2.2-arm64.fpk` and `dist/fnos-mount-manager-1.2.2-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
+Outputs: `dist/fnos-mount-manager-1.2.5-arm64.fpk` and `dist/fnos-mount-manager-1.2.5-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
 
 The official fnOS SDK is downloaded using a locked npm dependency (`@trimjs/web-app@0.5.0`); its minified distribution is **not committed as original project source**.
 
@@ -139,3 +139,27 @@ The v1.2.3 read-only configuration reader handled flat maps and arrays but misse
 This release walks nested objects and arrays up to a bounded depth, recognizes leaves by their `mountPoint` and `comment` fields, and projects only the display allowlist. Records are matched to live mounts by exact mount point. The system file is never modified and stored credentials are never logged or returned.
 
 Regression tests reproduce the two-level layout and verify cross-user ordering, duplicate/share matching, non-mount-object filtering and depth limits. Evidence: [published fnOS mount manager JSON traversal](https://www.wangzipei.cn/archives/fei-niu-jiang-gua-zai-pan-gua-zai-dao-ben-di-mu-lu). Actual firmware integration remains a real NAS acceptance test.
+
+## v1.2.5: prevent two aliases from accidentally using the same SMB source
+
+### Root cause
+
+The form previously cleared only the *alias name* after a successful creation while retaining the last SMB source path. Creating “Dad Photos” and “Mom Photos” consecutively under the same local parent could therefore bind **both target folders to the same remote share**. A local alias name never determines the remote source.
+
+### Safeguards
+
+- Clear the source selection after successful creation, while **keeping the local parent folder** for sequential mappings.
+- Suggest the matching alias for a selected fnOS SMB mount; confirm an intentional difference between a known source alias and the local mapping name.
+- Show the full source → target pair before creation and both paths separately in the management list.
+- Reject duplicate source paths on the backend (HTTP 409) with the existing mapping name.
+- Add **Change source** for existing mappings. The mapping must first be disabled and completely unmounted, avoiding changes under an active backup process. The existing local folder remains intact. Metadata updates roll back on persistence failure.
+
+### Repair existing mappings safely
+
+1. Stop all backup/restore jobs using the alias.
+2. Disable the incorrect mapping and wait until it is unmounted. If busy, stop the processes using it rather than force-detaching.
+3. Use **Change source**, choose the correct SMB mount root, save, and re-enable.
+4. Confirm the management list now shows distinct sources for Dad and Mom Photos.
+5. Existing mappings are **not changed automatically** during upgrade. If the underlying fnOS SMB mounts themselves show the same remote content, fix those native mounts first.
+
+No content is copied or recursively deleted by a bind mount.

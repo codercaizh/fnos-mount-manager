@@ -74,3 +74,13 @@ main{display:flex;flex-direction:column;gap:18px}
 .choice-copy small{color:#91a0b4;font-size:11px}
 .back-action{border:0;background:transparent;color:#317ef5;font-size:12px;text-align:left;padding:5px 4px 10px;align-self:flex-start}
 .share-item strong{overflow-wrap:anywhere}
+
+/* Full provenance of each mapping, especially important for sibling aliases */
+.record-path{white-space:normal;overflow:visible;overflow-wrap:anywhere;line-height:1.6}
+.record-path>div+div{margin-top:2px}
+@media(max-width:600px){
+ .record{flex-wrap:wrap}
+ .record-body{flex:1;min-width:0}
+ .record-actions{width:100%;justify-content:flex-end;border-top:1px solid #edf0f7;padding-top:7px}
+ .action{width:37px;height:33px}
+}
