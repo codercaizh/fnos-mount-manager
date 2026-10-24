@@ -1,5 +1,5 @@
 const http=require('http'),fs=require('fs'),path=require('path'),assert=require('assert/strict');
-const {chromium}=require('/data/fnos-toolbox/node_modules/playwright');
+const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..');
 const web=path.join(root,'cmd/mountmgr/web');
 const base='/app/fnos-mount-manager/';

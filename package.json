@@ -6,7 +6,7 @@
   "scripts": {
     "prepare:sdk": "node scripts/prepare-sdk.cjs",
     "test:ui": "node scripts/ui-smoke.cjs && node scripts/ui-toolbox-smoke.cjs && node scripts/ui-copy-overflow-smoke.cjs",
-    "test:syntax": "node --check cmd/mountmgr/web/app.js && node --check cmd/mountmgr/web/copy-v206.js && node --check cmd/mountmgr/web/copy.js && node --check cmd/mountmgr/web/fnos-sdk.js",
+    "test:syntax": "node --check cmd/mountmgr/web/app.js && node --check cmd/mountmgr/web/copy-v206.js && node --check cmd/mountmgr/web/copy.js && node --check cmd/mountmgr/web/fnos-sdk.js && node scripts/check-test-portability.cjs",
     "icons": "node scripts/render-toolbox-icon.cjs"
   },
   "dependencies": {
