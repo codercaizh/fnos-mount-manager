@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -92,5 +95,50 @@ func TestMountInfoExtractsCIFSSource(t *testing.T) {
 	shares := remoteSharesFromMounts(result)
 	if len(shares) != 1 || !strings.Contains(shares[0].Name, "Photos") {
 		t.Fatalf("expected user-friendly UNC label, got %+v", shares)
+	}
+}
+
+func TestEnrichRemoteSharesContinuesAfterEmptyAPIList(t *testing.T) {
+	calls := []string{}
+	shares := []RemoteShare{{Path: "/vol02/1000-0-abc", Name: "Photos · 10.0.2.50", LabelSource: "smb"}}
+	caller := func(_ context.Context, method string, data any) (json.RawMessage, error) {
+		calls = append(calls, method)
+		if method == "appcgi.mountmgr.list" {
+			return json.RawMessage(`[]`), nil
+		}
+		if method == "trim.file.convertPath" {
+			return json.RawMessage(`{"result":[{"path":"/vol02/1000-0-abc","semanticPath":"远程挂载/相册备份"}]}`), nil
+		}
+		t.Fatalf("Unexpected method: %s", method)
+		return nil, nil
+	}
+	enrichRemoteSharesUsing(context.Background(), shares, caller)
+	if !reflect.DeepEqual(calls, []string{"appcgi.mountmgr.list", "trim.file.convertPath"}) {
+		t.Fatalf("fallback skipped: %v", calls)
+	}
+	if shares[0].Name != "相册备份" || shares[0].LabelSource != "semantic" {
+		t.Fatalf("fallback alias not adopted: %+v", shares[0])
+	}
+}
+func TestEnrichRemoteSharesPartialMetadata(t *testing.T) {
+	shares := []RemoteShare{
+		{Path: "/vol02/1000-0-a", Name: "fallback-a", LabelSource: "smb"},
+		{Path: "/vol02/1000-0-b", Name: "fallback-b", LabelSource: "smb"},
+	}
+	caller := func(_ context.Context, method string, data any) (json.RawMessage, error) {
+		if method == "appcgi.mountmgr.list" {
+			return json.RawMessage(`[{"name":"1000-0-a","mountPoint":"/vol02/1000-0-a","comment":"飞牛别名"}]`), nil
+		}
+		if method == "trim.file.convertPath" {
+			return json.RawMessage(`{"result":[{"path":"/vol02/1000-0-a","semanticPath":"远程挂载/不应覆盖"},{"path":"/vol02/1000-0-b","semanticPath":"远程挂载/另外一条"}]}`), nil
+		}
+		return nil, errors.New("unknown method")
+	}
+	enrichRemoteSharesUsing(context.Background(), shares, caller)
+	if shares[0].Name != "飞牛别名" || shares[0].LabelSource != "fnos" {
+		t.Fatalf("native metadata replaced: %+v", shares[0])
+	}
+	if shares[1].Name != "另外一条" || shares[1].LabelSource != "semantic" {
+		t.Fatalf("partial fallback failed: %+v", shares[1])
 	}
 }

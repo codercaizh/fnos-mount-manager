@@ -6,7 +6,7 @@
 
 ![移动端界面预览](docs/screenshot-mobile.png)
 
-> **v1.2.1** · ARM64 / x86_64 · fnOS ≥ 1.2.1604 · MIT（自有代码） · 安装需 root/CAP_SYS_ADMIN 特权。请先在测试目录验证兼容性。
+> **v1.2.2** · ARM64 / x86_64 · fnOS ≥ 1.2.1604 · MIT（自有代码） · 安装需 root/CAP_SYS_ADMIN 特权。请先在测试目录验证兼容性。
 
 ## 使用场景与原理
 
@@ -80,7 +80,7 @@ chmod +x dist/fnpack-linux-amd64
 bash scripts/build.sh
 ```
 
-输出：`dist/fnos-mount-manager-1.2.1-arm64.fpk`、`dist/fnos-mount-manager-1.2.1-x86_64.fpk` 及对应 SHA-256。两个 FPK 的 manifest 平台分别是 `arm` 与 `x86`，包含不同的 Linux ELF 可执行文件。
+输出：`dist/fnos-mount-manager-1.2.2-arm64.fpk`、`dist/fnos-mount-manager-1.2.2-x86_64.fpk` 及对应 SHA-256。两个 FPK 的 manifest 平台分别是 `arm` 与 `x86`，包含不同的 Linux ELF 可执行文件。
 
 ## 源码目录
 
@@ -102,6 +102,14 @@ docs/                           测试、安全、第三方依赖说明
 ## 许可与声明
 
 仓库自有代码采用 [MIT](LICENSE)。fnOS、`@trimjs/web-app` 和 `fnpack` 为各自权利人的项目；SDK 通过锁定 npm 依赖重建，不将第三方压缩代码冒称自有源码，具体见 [第三方说明](docs/THIRD_PARTY.md)。本项目并非飞牛官方应用。欢迎提交附带 fnOS 版本、CPU 架构及脱敏日志的 Issue。
+
+## v1.2.2：明确区分飞牛别名与 SMB 共享名
+
+此前 fnOS 挂载接口返回空列表或缺少部分挂载别名时，会提前停止名称解析，导致显示 `共享名 · IP`。现在会继续调用飞牛 `trim.file.convertPath` 尝试转换未取得别名的路径，并保留已经匹配到的自定义别名。
+
+SMB 弹窗会明确标识名称来源：**飞牛挂载别名**、**飞牛文件路径名称**或**SMB 共享地址（未获取系统别名）**。升级不会改变挂载路径或配置。
+
+注意：此修复不保证所有固件允许第三方应用读取原生别名。若仍显示“未获取系统别名”，需对照飞牛文件管理器的实际别名来诊断。
 
 ## v1.2.1：来源两步选择与 SMB 挂载别名
 

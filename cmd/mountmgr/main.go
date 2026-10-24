@@ -156,8 +156,9 @@ func getMount(ms []MountInfo, p string) (MountInfo, bool) {
 
 // RemoteShare represents an actual SMB/CIFS mount root, not an arbitrary subfolder.
 type RemoteShare struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	LabelSource string `json:"labelSource,omitempty"`
 }
 
 // remoteSharesFromMounts is pure for reproducible tests.
@@ -171,7 +172,7 @@ func remoteSharesFromMounts(ms []MountInfo) []RemoteShare {
 		if m.FSType != "cifs" && m.FSType != "smb3" {
 			continue
 		}
-		roots[m.Point] = RemoteShare{Path: m.Point, Name: shareLabelFromSource(m.Source, parts[1])}
+		roots[m.Point] = RemoteShare{Path: m.Point, Name: shareLabelFromSource(m.Source, parts[1]), LabelSource: "smb"}
 	}
 	out := make([]RemoteShare, 0, len(roots))
 	for _, r := range roots {

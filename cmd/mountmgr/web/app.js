@@ -188,7 +188,7 @@ function showSourceChoices(){
  list.append(chooseFolderButton,chooseSMBButton);
 }
 async function showRemoteShares(){
- showExtraDialog('选择远程目录','使用飞牛文件管理器中的挂载名称');
+ showExtraDialog('选择远程目录','优先显示飞牛挂载别名，无法获取时显示共享地址');
  const list=$('dialog-content');
  list.append(node('div','empty','正在读取远程挂载…'));
  try{
@@ -203,7 +203,7 @@ async function showRemoteShares(){
    const button=node('button','share-item');
    button.type='button';
    const label=node('strong','',share.name);
-   const subtitle=node('small','','SMB 远程挂载');
+   const subtitle=node('small','',share.labelSource==='fnos'?'飞牛挂载别名':share.labelSource==='semantic'?'飞牛文件路径名称':'SMB 共享地址（未获取系统别名）');
    button.append(label,subtitle);
    // The real mount path is not a human-facing label; use it only as value.
    button.addEventListener('click',()=>{updateSelected('source',share.path);$('source-label').textContent=share.name;$('source-label').title=share.path;hideExtraDialog();});

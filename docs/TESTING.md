@@ -60,6 +60,10 @@ The `scripts/build.sh` command cross-compiles both ARM64 and x86_64 binaries and
 - Root capability and startup service behavior depend on fnOS firmware policy; CI cannot certify a particular NAS version.
 - No write workload is performed on production shares.
 
+## v1.2.2 / Empty and partial mount metadata responses
+
+Go tests simulate an empty mount-list response and a partial list. Every unmatched mount must continue through the semantic `trim.file.convertPath` fallback, while matched native custom aliases remain unchanged. Browser tests verify the native-alias versus fallback provenance text. fnOS hardware permissions remain unverified.
+
 ## v1.2.1 source dialog and alias verification
 
 - The browser smoke test checks the source click **does not** immediately launch the SDK, shows **Choose Folder** / **Choose Remote Directory**, and that the former starts the official fnOS picker.

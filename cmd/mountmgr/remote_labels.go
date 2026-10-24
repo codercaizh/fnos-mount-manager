@@ -148,6 +148,7 @@ func applyMountAliases(shares []RemoteShare, records []mountRecord) {
 			label := aliasForMount(r)
 			if label != "" {
 				shares[i].Name = label
+				shares[i].LabelSource = "fnos"
 			}
 			break
 		}
@@ -175,29 +176,51 @@ func applySemanticLabels(shares []RemoteShare, raw []byte) {
 		}
 	}
 	for i := range shares {
+		if shares[i].LabelSource == "fnos" {
+			continue
+		}
 		if label := lookup[shares[i].Path]; label != "" {
 			shares[i].Name = label
+			shares[i].LabelSource = "semantic"
 		}
 	}
 }
+
+type fnosCaller func(context.Context, string, any) (json.RawMessage, error)
+
 func enrichRemoteShares(ctx context.Context, shares []RemoteShare) {
+	enrichRemoteSharesUsing(ctx, shares, fnosCall)
+}
+
+func enrichRemoteSharesUsing(ctx context.Context, shares []RemoteShare, caller fnosCaller) {
 	if len(shares) == 0 {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	// Direct mount manager data gives the exact alias used by File Manager.
-	if raw, err := fnosCall(ctx, "appcgi.mountmgr.list", map[string]any{}); err == nil {
+	if raw, err := caller(ctx, "appcgi.mountmgr.list", map[string]any{}); err == nil {
 		if list, err := decodeMountRecords(raw); err == nil {
 			applyMountAliases(shares, list)
-			return
+			// On some firmwares the endpoint returns [] or mount records
+			// without a comment. We must still try semantic conversion.
+			resolved := true
+			for _, share := range shares {
+				if share.LabelSource != "fnos" {
+					resolved = false
+					break
+				}
+			}
+			if resolved {
+				return
+			}
 		}
 	}
 	paths := make([]string, 0, len(shares))
 	for _, r := range shares {
 		paths = append(paths, r.Path)
 	}
-	if raw, err := fnosCall(ctx, "trim.file.convertPath", map[string]any{"path": paths, "language": "zh-CN"}); err == nil {
+	if raw, err := caller(ctx, "trim.file.convertPath", map[string]any{"path": paths, "language": "zh-CN"}); err == nil {
 		applySemanticLabels(shares, raw)
 	}
 }

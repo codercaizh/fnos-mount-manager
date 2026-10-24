@@ -6,7 +6,7 @@ A lightweight folder-alias manager for **fnOS NAS**, powered by Linux bind mount
 
 ![Mobile user interface](docs/screenshot-mobile.png)
 
-> **v1.2.1** · ARM64 and x86_64 · fnOS ≥ 1.2.1604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
+> **v1.2.2** · ARM64 and x86_64 · fnOS ≥ 1.2.1604 · MIT (first-party source) · Requires root/CAP_SYS_ADMIN. Test against disposable folders before production use.
 
 ## The problem
 
@@ -82,7 +82,7 @@ chmod +x dist/fnpack-linux-amd64
 bash scripts/build.sh
 ```
 
-Outputs: `dist/fnos-mount-manager-1.2.1-arm64.fpk` and `dist/fnos-mount-manager-1.2.1-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
+Outputs: `dist/fnos-mount-manager-1.2.2-arm64.fpk` and `dist/fnos-mount-manager-1.2.2-x86_64.fpk`, plus individual SHA-256 checksums. The built FPKs declare the respective `platform=arm` and `platform=x86` values and embed architecture-specific Linux binaries.
 
 The official fnOS SDK is downloaded using a locked npm dependency (`@trimjs/web-app@0.5.0`); its minified distribution is **not committed as original project source**.
 
@@ -106,6 +106,12 @@ Persistent state: `TRIM_PKGVAR/private/mounts.json` (atomic update, file mode `0
 ## License and disclaimer
 
 Original project code is licensed under [MIT](LICENSE). fnOS, its SDK, and fnpack belong to their respective maintainers; see [third-party attributions](docs/THIRD_PARTY.md). **This is an independent community project, not an official fnOS application.** Include an fnOS version, CPU architecture and sanitized logs when reporting issues.
+
+## v1.2.2: explicit label provenance and correct fallback
+
+Previously, an empty or incomplete fnOS mount-list response stopped alias resolution, leaving a `share · server` label. Unresolved mounts now continue to `trim.file.convertPath` without overwriting already matched native aliases.
+
+The SMB picker marks labels as **fnOS mount alias**, **fnOS semantic path**, or **SMB share address (native alias unavailable)**. Saved mount paths and settings are unchanged. API availability may vary by fnOS firmware version.
 
 ## v1.2.1: two-step source picker and fnOS SMB aliases
 
